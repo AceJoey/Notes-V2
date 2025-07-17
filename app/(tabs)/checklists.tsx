@@ -7,6 +7,8 @@ import { CategoryHelpers } from '../../utils/categoryHelpers';
 import NoteCard from '../../components/NoteCard';
 import CategoryTabs from '../../components/CategoryTabs';
 import VaultPromptModal from '../../components/VaultPromptModal';
+import SearchModal from '../../components/SearchModal';
+import SortModal from '../../components/SortModal';
 import { useTheme } from '../../theme/ThemeContext';
 import { useFocusEffect } from 'expo-router';
 
@@ -156,6 +158,9 @@ export default function ChecklistScreen() {
   const [selectedNote, setSelectedNote] = useState<Note | null>(null);
   const [noteOptionsVisible, setNoteOptionsVisible] = useState<boolean>(false);
   const [pullStartTime, setPullStartTime] = useState<number | null>(null);
+  const [searchModalVisible, setSearchModalVisible] = useState<boolean>(false);
+  const [sortModalVisible, setSortModalVisible] = useState<boolean>(false);
+  const [currentSort, setCurrentSort] = useState<string>('created-desc');
 
   useFocusEffect(
     React.useCallback(() => {
@@ -195,8 +200,32 @@ export default function ChecklistScreen() {
     }
   };
 
-  // Only show checklist notes
-  const filteredNotes: Note[] = CategoryHelpers.filterNotesByCategory(notes, selectedCategory).filter((n: Note) => n.type === 'checklist');
+  const sortNotes = (notes: Note[], sortType: string): Note[] => {
+    const sortedNotes = [...notes];
+    
+    switch (sortType) {
+      case 'title-asc':
+        return sortedNotes.sort((a, b) => a.title.localeCompare(b.title));
+      case 'title-desc':
+        return sortedNotes.sort((a, b) => b.title.localeCompare(a.title));
+      case 'created-asc':
+        return sortedNotes.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+      case 'created-desc':
+        return sortedNotes.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      case 'updated-asc':
+        return sortedNotes.sort((a, b) => new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime());
+      case 'updated-desc':
+        return sortedNotes.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+      default:
+        return sortedNotes;
+    }
+  };
+
+  // Only show checklist notes, filtered and sorted
+  const filteredAndSortedNotes: Note[] = sortNotes(
+    CategoryHelpers.filterNotesByCategory(notes, selectedCategory).filter((n: Note) => n.type === 'checklist'),
+    currentSort
+  );
 
   const handleNotePress = (note: Note) => {
     router.push({
@@ -249,6 +278,17 @@ export default function ChecklistScreen() {
     router.push('/category-editor');
   };
 
+  const handleSearchPress = () => {
+    setSearchModalVisible(true);
+  };
+
+  const handleSortPress = () => {
+    setSortModalVisible(true);
+  };
+
+  const handleSuggestAllCategory = () => {
+    setSelectedCategory('all');
+  };
   const renderNote = ({ item }: { item: Note }): React.ReactElement => (
     <NoteCard
       note={item}
@@ -263,10 +303,10 @@ export default function ChecklistScreen() {
       <View style={styles.header}>
         <Text style={styles.appTitle}>Checklists</Text>
         <View style={styles.headerActions}>
-          <TouchableOpacity style={styles.headerButton}>
+          <TouchableOpacity style={styles.headerButton} onPress={handleSearchPress}>
             <Search size={24} color={theme === 'dark' ? '#fff' : '#222'} />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.headerButton}>
+          <TouchableOpacity style={styles.headerButton} onPress={handleSortPress}>
             <SlidersHorizontal size={24} color={theme === 'dark' ? '#fff' : '#222'} />
           </TouchableOpacity>
           <TouchableOpacity style={styles.headerButton} onPress={() => router.push('/menu')}>
@@ -285,7 +325,7 @@ export default function ChecklistScreen() {
       <View style={styles.notesHeader}>
         <Text style={styles.notesTitle}>Checklists</Text>
         <Text style={styles.notesCount}>
-          {filteredNotes.length} {filteredNotes.length === 1 ? 'checklist' : 'checklists'}
+          {filteredAndSortedNotes.length} {filteredAndSortedNotes.length === 1 ? 'checklist' : 'checklists'}
         </Text>
       </View>
     </View>
@@ -294,7 +334,7 @@ export default function ChecklistScreen() {
   const renderEmptyState = () => (
     <View style={styles.emptyState}>
       <Text style={styles.emptyTitle}>
-        {selectedCategory === 'all' ? 'No checklists yet' : `No ${CategoryHelpers.getCategoryName(selectedCategory, categories).toLowerCase()} checklists`}
+        {selectedCategory === 'all' ? 'No checklists yet' : `No ${CategoryHelpers.getCategoryName(selectedCategory, categories)} checklists`}
       </Text>
       <Text style={styles.emptySubtitle}>
         {selectedCategory === 'all' 
@@ -317,7 +357,7 @@ export default function ChecklistScreen() {
   return (
     <View style={styles.container}>
       <FlatList
-        data={filteredNotes}
+        data={filteredAndSortedNotes}
         renderItem={renderNote}
         keyExtractor={(item: Note) => item.id}
         ListHeaderComponent={renderHeader}
@@ -333,7 +373,7 @@ export default function ChecklistScreen() {
             onTouchEnd={handlePullEnd}
           />
         }
-        contentContainerStyle={filteredNotes.length === 0 ? styles.emptyContainer : null}
+        contentContainerStyle={filteredAndSortedNotes.length === 0 ? styles.emptyContainer : null}
       />
 
       <TouchableOpacity
@@ -380,6 +420,23 @@ export default function ChecklistScreen() {
           </View>
         </TouchableOpacity>
       </Modal>
+
+      <SearchModal
+        visible={searchModalVisible}
+        onClose={() => setSearchModalVisible(false)}
+        notes={notes}
+        categories={categories}
+        selectedCategory={selectedCategory}
+        onNotePress={handleNotePress}
+        onSuggestAllCategory={handleSuggestAllCategory}
+      />
+
+      <SortModal
+        visible={sortModalVisible}
+        onClose={() => setSortModalVisible(false)}
+        currentSort={currentSort}
+        onSortChange={setCurrentSort}
+      />
     </View>
   );
 } 
