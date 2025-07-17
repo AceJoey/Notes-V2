@@ -194,8 +194,7 @@ export default function CategoryEditor() {
 
   const colorOptions = [
     '#f59e0b', '#10b981', '#6366f1', '#ef4444', '#8b5cf6',
-    '#06b6d4', '#84cc16', '#f97316', '#ec4899', '#14b8a6',
-    '#f97316', '#06b6d4', '#8b5cf6', '#ef4444', '#10b981'
+    '#06b6d4', '#84cc16', '#f97316', '#ec4899', '#14b8a6'
   ];
 
   useEffect(() => {
