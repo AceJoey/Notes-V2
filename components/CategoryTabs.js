@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform, Pressable } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
 
 function getStyles(theme) {
@@ -18,7 +18,7 @@ function getStyles(theme) {
       flex: 1,
     },
     scrollContent: {
-      paddingHorizontal: 0,
+      paddingHorizontal: 8,
       flexDirection: 'row',
       alignItems: 'center',
     },
@@ -27,7 +27,7 @@ function getStyles(theme) {
       paddingVertical: 8,
       borderRadius: 20,
       marginRight: 8,
-      minWidth: 60,
+      minWidth: 80,
       alignItems: 'center',
     },
     selectedTab: {
@@ -38,7 +38,7 @@ function getStyles(theme) {
     tabText: {
       fontSize: 14,
       fontWeight: '500',
-      color: theme === 'dark' ? '#fff' : '#222',
+      color: '#fff',
     },
     selectedTabText: {
       fontWeight: '600',
@@ -77,49 +77,51 @@ export default function CategoryTabs({ categories, selectedCategory, onCategoryS
   const scrollViewRef = useRef(null);
   const [scrollPosition, setScrollPosition] = useState(0);
   const [contentWidth, setContentWidth] = useState(0);
-  const [beltWidth, setBeltWidth] = useState(0);
+  const [containerWidth, setContainerWidth] = useState(0);
   
   const allCategory = categories.find(cat => cat.id === 'all');
   const otherCategories = categories.filter(cat => cat.id !== 'all');
   
-  // Remove infinite scroll: only use otherCategories
-  const visibleCategories = otherCategories;
-  const categoryWidth = 80; // Approximate width of each category bubble
-  const totalCategories = visibleCategories.length;
-  // No centerOffset needed
+  // Create infinite scroll by tripling the categories
+  const infiniteCategories = [...otherCategories, ...otherCategories, ...otherCategories];
+  const categoryWidth = 96; // Width + margin
+  const totalOriginalWidth = otherCategories.length * categoryWidth;
 
   useEffect(() => {
-    // Set initial scroll position to center
-    if (scrollViewRef.current && contentWidth > 0) {
-      // No centerOffset needed
+    // Set initial scroll position to center (middle set of categories)
+    if (scrollViewRef.current && totalOriginalWidth > 0) {
+      const centerOffset = totalOriginalWidth;
+      scrollViewRef.current.scrollTo({ x: centerOffset, animated: false });
+      setScrollPosition(centerOffset);
     }
-  }, [contentWidth]);
+  }, [totalOriginalWidth, otherCategories.length]);
 
   const handleScroll = (event) => {
     const offsetX = event.nativeEvent.contentOffset.x;
     setScrollPosition(offsetX);
     
     // Reset scroll position when reaching edges for infinite effect
-    // Only apply infinite scroll logic on mobile platforms
-    // No infinite scroll logic needed
+    if (totalOriginalWidth > 0) {
+      if (offsetX <= 0) {
+        // Scrolled to beginning, jump to middle set
+        scrollViewRef.current?.scrollTo({ x: totalOriginalWidth, animated: false });
+      } else if (offsetX >= totalOriginalWidth * 2) {
+        // Scrolled to end, jump back to middle set
+        scrollViewRef.current?.scrollTo({ x: totalOriginalWidth, animated: false });
+      }
+    }
   };
 
-  // Handle press on the belt
-  const handleBeltPress = (event) => {
-    // Get tap position relative to the belt
-    const tapX = event.nativeEvent.locationX;
-    // Calculate which bubble is at that position
-    // Account for current scroll offset
-    const index = Math.floor((scrollPosition + tapX) / categoryWidth);
-    const safeIndex = Math.max(0, Math.min(index, visibleCategories.length - 1));
-    const category = visibleCategories[safeIndex];
-    if (category && category.id) {
-      onCategorySelect(category.id);
-    }
+  const handleCategoryPress = (category) => {
+    onCategorySelect(category.id);
   };
 
   const handleContentLayout = (event) => {
     setContentWidth(event.nativeEvent.layout.width);
+  };
+
+  const handleContainerLayout = (event) => {
+    setContainerWidth(event.nativeEvent.layout.width);
   };
 
   // Platform-specific ScrollView props
@@ -147,8 +149,6 @@ export default function CategoryTabs({ categories, selectedCategory, onCategoryS
       return {
         ...baseProps,
         decelerationRate: "fast",
-        snapToInterval: categoryWidth + 8,
-        snapToAlignment: "center",
       };
     }
   };
@@ -164,29 +164,29 @@ export default function CategoryTabs({ categories, selectedCategory, onCategoryS
         <Text style={styles.allTabText}>All</Text>
       </TouchableOpacity>
 
-      {/* Infinite scrollable categories as a pressable belt */}
-      <View style={styles.scrollContainer} onLayout={e => setBeltWidth(e.nativeEvent.layout.width)}>
-        <Pressable style={{ flex: 1 }} onPress={handleBeltPress}>
-          <ScrollView {...getScrollViewProps()} pointerEvents="none">
-            {visibleCategories.map((category, index) => (
-              <View
-                key={`cat-${index}-${category.name}`}
-                style={[
-                  styles.tab,
-                  { backgroundColor: category.color },
-                  selectedCategory === category.id && styles.selectedTab
-                ]}
-              >
-                <Text style={[
-                  styles.tabText,
-                  selectedCategory === category.id && styles.selectedTabText
-                ]}>
-                  {category.name}
-                </Text>
-              </View>
-            ))}
-          </ScrollView>
-        </Pressable>
+      {/* Infinite scrollable categories */}
+      <View style={styles.scrollContainer} onLayout={handleContainerLayout}>
+        <ScrollView {...getScrollViewProps()}>
+          {infiniteCategories.map((category, index) => (
+            <TouchableOpacity
+              key={`cat-${index}-${category.id}`}
+              style={[
+                styles.tab,
+                { backgroundColor: category.color },
+                selectedCategory === category.id && styles.selectedTab
+              ]}
+              onPress={() => handleCategoryPress(category)}
+              activeOpacity={0.7}
+            >
+              <Text style={[
+                styles.tabText,
+                selectedCategory === category.id && styles.selectedTabText
+              ]}>
+                {category.name}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
       </View>
 
       {/* Fixed Edit button */}
