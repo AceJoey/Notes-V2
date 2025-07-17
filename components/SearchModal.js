@@ -9,7 +9,7 @@ import {
   FlatList,
   Alert
 } from 'react-native';
-import { X, Search, FileText, CheckSquare } from 'lucide-react-native';
+import { X, Search, FileText, SquareCheck as CheckSquare } from 'lucide-react-native';
 import { useTheme } from '../theme/ThemeContext';
 import { CategoryHelpers } from '../utils/categoryHelpers';
 
