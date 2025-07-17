@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '../theme/ThemeContext';
 
@@ -7,6 +8,7 @@ function getStyles(theme) {
   return StyleSheet.create({
     container: {
       backgroundColor: theme === 'dark' ? '#1a1a1a' : '#f3f4f6',
+      position: 'relative',
     },
     tabsRow: {
       flexDirection: 'row',
@@ -33,11 +35,19 @@ function getStyles(theme) {
       marginRight: 8,
       minWidth: 80,
       alignItems: 'center',
+      elevation: 0,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 0 },
+      shadowOpacity: 0,
+      shadowRadius: 0,
     },
     selectedTab: {
-      transform: [{ scale: 1.05 }],
-      borderWidth: 2,
-      borderColor: '#3b82f6',
+      elevation: 8,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.3,
+      shadowRadius: 8,
+      transform: [{ translateY: -2 }, { scale: 1.05 }],
     },
     tabText: {
       fontSize: 14,
@@ -72,22 +82,23 @@ function getStyles(theme) {
       fontWeight: '600',
       color: '#fff',
     },
-    pointerContainer: {
+    fadeLeft: {
       position: 'absolute',
-      top: -8,
-      left: '50%',
-      transform: [{ translateX: -6 }],
-      zIndex: 10,
+      left: 0,
+      top: 0,
+      bottom: 0,
+      width: 20,
+      zIndex: 3,
+      pointerEvents: 'none',
     },
-    pointer: {
-      width: 0,
-      height: 0,
-      borderLeftWidth: 6,
-      borderRightWidth: 6,
-      borderBottomWidth: 8,
-      borderLeftColor: 'transparent',
-      borderRightColor: 'transparent',
-      borderBottomColor: '#3b82f6',
+    fadeRight: {
+      position: 'absolute',
+      right: 0,
+      top: 0,
+      bottom: 0,
+      width: 20,
+      zIndex: 3,
+      pointerEvents: 'none',
     },
   });
 }
@@ -96,9 +107,7 @@ export default function CategoryTabs({ categories, selectedCategory, onCategoryS
   const { theme } = useTheme();
   const styles = getStyles(theme);
   const scrollViewRef = useRef(null);
-  const [scrollPosition, setScrollPosition] = useState(0);
-  const [isScrolling, setIsScrolling] = useState(false);
-  const scrollTimeoutRef = useRef(null);
+  const [showFades, setShowFades] = useState({ left: false, right: false });
   
   const allCategory = categories.find(cat => cat.id === 'all');
   const otherCategories = categories.filter(cat => cat.id !== 'all');
@@ -113,7 +122,6 @@ export default function CategoryTabs({ categories, selectedCategory, onCategoryS
     if (scrollViewRef.current && totalOriginalWidth > 0) {
       const centerOffset = totalOriginalWidth;
       scrollViewRef.current.scrollTo({ x: centerOffset, animated: false });
-      setScrollPosition(centerOffset);
     }
   }, [totalOriginalWidth, otherCategories.length]);
 
@@ -125,19 +133,14 @@ export default function CategoryTabs({ categories, selectedCategory, onCategoryS
 
   const handleScroll = (event) => {
     const offsetX = event.nativeEvent.contentOffset.x;
-    setScrollPosition(offsetX);
-    setIsScrolling(true);
+    const contentWidth = event.nativeEvent.contentSize.width;
+    const scrollViewWidth = event.nativeEvent.layoutMeasurement.width;
     
-    // Clear existing timeout
-    if (scrollTimeoutRef.current) {
-      clearTimeout(scrollTimeoutRef.current);
-    }
-    
-    // Set timeout to detect when scrolling stops
-    scrollTimeoutRef.current = setTimeout(() => {
-      setIsScrolling(false);
-      snapToNearestCategory(offsetX);
-    }, 150);
+    // Update fade visibility
+    setShowFades({
+      left: offsetX > 10,
+      right: offsetX < contentWidth - scrollViewWidth - 10
+    });
     
     // Reset scroll position when reaching edges for infinite effect
     if (totalOriginalWidth > 0) {
@@ -149,93 +152,74 @@ export default function CategoryTabs({ categories, selectedCategory, onCategoryS
     }
   };
 
-  const snapToNearestCategory = (currentOffset) => {
-    if (totalOriginalWidth === 0) return;
-    
-    // Calculate which category should be centered
-    const categoryIndex = Math.round(currentOffset / categoryWidth);
-    const targetOffset = categoryIndex * categoryWidth;
-    
-    // Snap to the calculated position
-    scrollViewRef.current?.scrollTo({ x: targetOffset, animated: true });
-    
-    // Trigger haptic feedback
-    triggerHapticFeedback();
-    
-    // Determine which category is now centered and select it
-    const normalizedIndex = categoryIndex % otherCategories.length;
-    const centeredCategory = otherCategories[normalizedIndex];
-    if (centeredCategory && selectedCategory !== centeredCategory.id) {
-      onCategorySelect(centeredCategory.id);
-    }
-  };
-
   const handleCategoryPress = (category) => {
-    // Find the category's position and scroll to it
-    const categoryIndex = otherCategories.findIndex(cat => cat.id === category.id);
-    if (categoryIndex !== -1) {
-      const targetOffset = totalOriginalWidth + (categoryIndex * categoryWidth);
-      scrollViewRef.current?.scrollTo({ x: targetOffset, animated: true });
-      triggerHapticFeedback();
-    }
+    triggerHapticFeedback();
     onCategorySelect(category.id);
   };
 
-  const handleMomentumScrollEnd = (event) => {
-    const offsetX = event.nativeEvent.contentOffset.x;
-    snapToNearestCategory(offsetX);
+  const handleAllPress = () => {
+    triggerHapticFeedback();
+    onCategorySelect('all');
   };
 
-  // Platform-specific ScrollView props
-  const getScrollViewProps = () => {
-    const baseProps = {
-      ref: scrollViewRef,
-      horizontal: true,
-      showsHorizontalScrollIndicator: false,
-      contentContainerStyle: styles.scrollContent,
-      onScroll: handleScroll,
-      onMomentumScrollEnd: handleMomentumScrollEnd,
-      scrollEventThrottle: 16,
-      keyboardShouldPersistTaps: "handled",
-      overScrollMode: "never",
-      bounces: false,
-      snapToInterval: categoryWidth,
-      snapToAlignment: 'center',
-      decelerationRate: 'fast',
-    };
-
-    return baseProps;
-  };
+  // Get fade colors based on theme
+  const fadeColors = theme === 'dark' 
+    ? ['rgba(26, 26, 26, 0)', 'rgba(26, 26, 26, 1)']
+    : ['rgba(243, 244, 246, 0)', 'rgba(243, 244, 246, 1)'];
 
   return (
     <View style={styles.container}>
       <View style={styles.tabsRow}>
         {/* Fixed All button */}
         <TouchableOpacity
-          style={[styles.allTab, styles.fixedButton, selectedCategory === 'all' && styles.selectedTab]}
-          onPress={() => onCategorySelect('all')}
+          style={[styles.allTab, styles.fixedButton]}
+          onPress={handleAllPress}
           activeOpacity={0.7}
         >
           <Text style={styles.allTabText}>All</Text>
         </TouchableOpacity>
 
-        {/* Infinite scrollable categories with pointer */}
+        {/* Infinite scrollable categories with fade effects */}
         <View style={styles.scrollContainer}>
-          {/* Selection pointer */}
-          {selectedCategory !== 'all' && (
-            <View style={styles.pointerContainer}>
-              <View style={styles.pointer} />
-            </View>
+          {/* Left fade */}
+          {showFades.left && (
+            <LinearGradient
+              colors={fadeColors}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.fadeLeft}
+            />
           )}
           
-          <ScrollView {...getScrollViewProps()}>
+          {/* Right fade */}
+          {showFades.right && (
+            <LinearGradient
+              colors={[fadeColors[1], fadeColors[0]]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.fadeRight}
+            />
+          )}
+          
+          <ScrollView
+            ref={scrollViewRef}
+            horizontal={true}
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.scrollContent}
+            onScroll={handleScroll}
+            scrollEventThrottle={16}
+            keyboardShouldPersistTaps="handled"
+            overScrollMode="never"
+            bounces={false}
+            decelerationRate="normal"
+          >
             {infiniteCategories.map((category, index) => (
               <TouchableOpacity
                 key={`cat-${index}-${category.id}`}
                 style={[
                   styles.tab,
                   { backgroundColor: category.color },
-                  selectedCategory === category.id && styles.selectedTab
+                  selectedCategory === category.id && selectedCategory !== 'all' && styles.selectedTab
                 ]}
                 onPress={() => handleCategoryPress(category)}
                 activeOpacity={0.7}

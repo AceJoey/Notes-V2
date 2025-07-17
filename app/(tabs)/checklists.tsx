@@ -267,7 +267,13 @@ export default function ChecklistScreen() {
   };
 
   const handleCreateNote = () => {
-    router.push('/note-editor');
+    router.push({
+      pathname: '/note-editor',
+      params: { 
+        categoryId: selectedCategory,
+        type: 'checklist'
+      }
+    });
   };
 
   const handleViewAllNotes = () => {

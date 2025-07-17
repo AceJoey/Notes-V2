@@ -276,7 +276,13 @@ export default function HomeScreen() {
   };
 
   const handleCreateNote = () => {
-    router.push('/note-editor');
+    router.push({
+      pathname: '/note-editor',
+      params: { 
+        categoryId: selectedCategory,
+        type: 'text'
+      }
+    });
   };
 
   const handleViewAllNotes = () => {

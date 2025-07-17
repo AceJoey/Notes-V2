@@ -197,12 +197,12 @@ function getStyles(theme: string) {
 
 export default function NoteEditor() {
   const router = useRouter();
-  const { noteId } = useLocalSearchParams();
+  const { noteId, categoryId: initialCategoryId, type: initialType } = useLocalSearchParams();
   const [note, setNote] = useState<Note>({
     title: '',
     content: '',
-    categoryId: 'personal',
-    type: 'text',
+    categoryId: initialCategoryId || 'personal',
+    type: initialType || 'text',
     items: []
   });
   const [categories, setCategories] = useState<Category[]>([]);
@@ -227,6 +227,13 @@ export default function NoteEditor() {
         if (existingNote) {
           setNote(existingNote);
         }
+      } else {
+        // For new notes, set the initial category and type from params
+        setNote(prev => ({
+          ...prev,
+          categoryId: initialCategoryId || 'personal',
+          type: initialType || 'text'
+        }));
       }
     } catch (error) {
       console.error('Error loading data:', error);
@@ -346,6 +353,7 @@ export default function NoteEditor() {
       ...prev,
       items: [...prev.items, newItem]
     }));
+    setHasUnsavedChanges(true);
   };
 
   const handleCategorySelect = (categoryId: string) => {
