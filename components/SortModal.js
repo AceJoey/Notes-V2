@@ -6,7 +6,7 @@ import {
   Modal, 
   TouchableOpacity 
 } from 'react-native';
-import { X, Check, ArrowUp, ArrowDown, Calendar, AlphabeticalOrder as Type, Clock } from 'lucide-react-native';
+import { X, Check, ArrowUp, ArrowDown, Calendar, SlidersVertical as Type, Clock } from 'lucide-react-native';
 import { useTheme } from '../theme/ThemeContext';
 
 function getStyles(theme) {
