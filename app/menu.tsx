@@ -11,7 +11,8 @@ import {
   ChevronRight,
   Moon,
   Sun,
-  ArrowLeft
+  ArrowLeft,
+  Type
 } from 'lucide-react-native';
 import { StorageHelper } from '../utils/storage';
 import { useTheme } from '../theme/ThemeContext';
@@ -197,11 +198,7 @@ export default function MenuScreen() {
   };
 
   const handleVaultSettings = () => {
-    Alert.alert(
-      'Vault Settings',
-      'Vault functionality will be available in Phase 2. This will include:\n\n• PIN setup and management\n• Secure file storage\n• Access control settings\n• Backup and recovery options',
-      [{ text: 'OK' }]
-    );
+    router.push('/vault-settings');
   };
 
   const handleAbout = () => {
@@ -225,6 +222,12 @@ export default function MenuScreen() {
       onToggle: handleThemeToggle,
     },
     {
+      title: 'Font Size',
+      icon: Type,
+      type: 'button',
+      onPress: () => router.push('/font-size'),
+    },
+    {
       title: 'Vault Settings',
       icon: Shield,
       type: 'button',
@@ -243,6 +246,13 @@ export default function MenuScreen() {
       onPress: handleImportNotes,
     },
     {
+      title: 'Recycle Bin',
+      icon: Trash2,
+      type: 'button',
+      onPress: handleRecycleBin,
+      color: '#e11d48',
+    },
+    {
       title: 'Clear All Data',
       icon: Trash2,
       type: 'button',
@@ -254,13 +264,6 @@ export default function MenuScreen() {
       icon: Info,
       type: 'button',
       onPress: handleAbout,
-    },
-    {
-      title: 'Recycle Bin',
-      icon: Trash2,
-      type: 'button',
-      onPress: handleRecycleBin,
-      color: '#e11d48',
     },
   ];
 
@@ -320,17 +323,6 @@ export default function MenuScreen() {
       </View>
 
       <View style={styles.menuContainer}>
-        {/* Font Size Menu Item */}
-        <TouchableOpacity
-          style={styles.menuItem}
-          onPress={() => router.push('/font-size')}
-          activeOpacity={0.7}
-        >
-          <View style={styles.menuItemLeft}>
-            <Text style={styles.menuItemText}>Font size</Text>
-          </View>
-        </TouchableOpacity>
-        {/* Existing menu items */}
         {menuItems.map((item, index) => renderMenuItem(item, index))}
       </View>
 

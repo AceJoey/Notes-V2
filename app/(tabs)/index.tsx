@@ -19,6 +19,9 @@ import CategoryTabs from '../../components/CategoryTabs';
 import VaultPromptModal from '../../components/VaultPromptModal';
 import SearchModal from '../../components/SearchModal';
 import SortModal from '../../components/SortModal';
+import VaultPullGesture from '../../components/VaultPullGesture';
+import VaultKeypad from '../../components/VaultKeypad';
+import VaultScreen from '../../components/VaultScreen';
 import { useTheme, PRIMARY_COLOR } from '../../theme/ThemeContext';
 import { useFocusEffect } from 'expo-router';
 import { Tabs } from 'expo-router';
@@ -197,6 +200,8 @@ export default function HomeScreen() {
   const [selectedNotes, setSelectedNotes] = useState<string[]>([]);
   const [selectionMode, setSelectionMode] = useState(false);
   const [moveModalVisible, setMoveModalVisible] = useState(false);
+  const [vaultKeypadVisible, setVaultKeypadVisible] = useState(false);
+  const [vaultScreenVisible, setVaultScreenVisible] = useState(false);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -408,6 +413,16 @@ export default function HomeScreen() {
   const handleSuggestAllCategory = () => {
     setSelectedCategory('all');
   };
+
+  const handleVaultTrigger = () => {
+    setVaultKeypadVisible(true);
+  };
+
+  const handleVaultSuccess = () => {
+    setVaultKeypadVisible(false);
+    setVaultScreenVisible(true);
+  };
+
   const renderNote = ({ item }: { item: Note }): React.ReactElement => (
     <NoteCard
       note={item}
@@ -479,7 +494,8 @@ export default function HomeScreen() {
   );
 
   return (
-    <View style={styles.container}>
+    <VaultPullGesture onVaultTrigger={handleVaultTrigger}>
+      <View style={styles.container}>
       {/* Fixed header overlay */}
       {renderHeader()}
       <FlatList
@@ -626,6 +642,18 @@ export default function HomeScreen() {
           </TouchableOpacity>
         </Modal>
       )}
+
+      <VaultKeypad
+        visible={vaultKeypadVisible}
+        onClose={() => setVaultKeypadVisible(false)}
+        onSuccess={handleVaultSuccess}
+      />
+
+      <VaultScreen
+        visible={vaultScreenVisible}
+        onClose={() => setVaultScreenVisible(false)}
+      />
     </View>
+    </VaultPullGesture>
   );
 }
