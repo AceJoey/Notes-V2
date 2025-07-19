@@ -2,7 +2,7 @@ import React, { useRef, useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
-import { useTheme } from '../theme/ThemeContext';
+import { useTheme, PRIMARY_COLOR } from '../theme/ThemeContext';
 
 function getStyles(theme) {
   return StyleSheet.create({
@@ -58,47 +58,76 @@ function getStyles(theme) {
       fontWeight: '600',
     },
     editTab: {
-      paddingHorizontal: 16,
-      paddingVertical: 8,
-      borderRadius: 20,
-      backgroundColor: theme === 'dark' ? '#3a3a3a' : '#e5e7eb',
+      backgroundColor: PRIMARY_COLOR,
       alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 4,
+      minWidth: 0,
+      elevation: 0,
+      marginLeft: 8,
     },
     editTabText: {
-      fontSize: 14,
-      fontWeight: '500',
-      color: '#3b82f6',
+      fontSize: 16,
+      fontWeight: 'bold',
+      color: '#fff',
+      letterSpacing: 1,
     },
     allTab: {
-      paddingHorizontal: 16,
-      paddingVertical: 8,
-      borderRadius: 20,
-      backgroundColor: '#3b82f6',
+      backgroundColor: PRIMARY_COLOR,
       alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 4,
+      minWidth: 0,
+      elevation: 0,
       marginRight: 8,
     },
     allTabText: {
-      fontSize: 14,
+      fontSize: 16,
       fontWeight: '600',
       color: '#fff',
+      letterSpacing: 1,
     },
     fadeLeft: {
       position: 'absolute',
       left: 0,
-      top: 0,
-      bottom: 0,
+      // Cover more vertical space to fully cover bubbles
+      top: '-10%',
+      height: '120%',
+      bottom: undefined,
+      // Set fade effect width to 20px
       width: 20,
       zIndex: 3,
       pointerEvents: 'none',
+      marginLeft: -16, // Overlap under the 'All' block
     },
     fadeRight: {
       position: 'absolute',
       right: 0,
-      top: 0,
-      bottom: 0,
+      // Cover more vertical space to fully cover bubbles
+      top: '-10%',
+      height: '120%',
+      bottom: undefined,
+      // Set fade effect width to 20px
       width: 20,
       zIndex: 3,
       pointerEvents: 'none',
+      marginRight: -16, // Overlap under the 'Edit' block
+    },
+    edgeButton: {
+      backgroundColor: PRIMARY_COLOR,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 4,
+      minWidth: 60,
+      width: 60,
+      elevation: 0,
+      marginHorizontal: 0,
     },
   });
 }
@@ -162,17 +191,17 @@ export default function CategoryTabs({ categories, selectedCategory, onCategoryS
     onCategorySelect('all');
   };
 
-  // Get fade colors based on theme
-  const fadeColors = theme === 'dark' 
-    ? ['rgba(26, 26, 26, 0)', 'rgba(26, 26, 26, 1)']
-    : ['rgba(243, 244, 246, 0)', 'rgba(243, 244, 246, 1)'];
+  // Maximum aggression: almost fully solid, sharp drop to transparent
+  const fadeColors = theme === 'dark'
+    ? ['rgba(26, 26, 26, 1)', 'rgba(26, 26, 26, 1)', 'rgba(26, 26, 26, 0.7)', 'rgba(26, 26, 26, 0)']
+    : ['rgba(243, 244, 246, 1)', 'rgba(243, 244, 246, 1)', 'rgba(243, 244, 246, 0.7)', 'rgba(243, 244, 246, 0)'];
 
   return (
     <View style={styles.container}>
       <View style={styles.tabsRow}>
         {/* Fixed All button */}
         <TouchableOpacity
-          style={[styles.allTab, styles.fixedButton]}
+          style={styles.edgeButton}
           onPress={handleAllPress}
           activeOpacity={0.7}
         >
@@ -185,6 +214,7 @@ export default function CategoryTabs({ categories, selectedCategory, onCategoryS
           {showFades.left && (
             <LinearGradient
               colors={fadeColors}
+              locations={[0, 0.7, 0.85, 1]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
               style={styles.fadeLeft}
@@ -194,9 +224,10 @@ export default function CategoryTabs({ categories, selectedCategory, onCategoryS
           {/* Right fade */}
           {showFades.right && (
             <LinearGradient
-              colors={[fadeColors[1], fadeColors[0]]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
+              colors={fadeColors}
+              locations={[0, 0.7, 0.85, 1]}
+              start={{ x: 1, y: 0 }}
+              end={{ x: 0, y: 0 }}
               style={styles.fadeRight}
             />
           )}
@@ -237,7 +268,7 @@ export default function CategoryTabs({ categories, selectedCategory, onCategoryS
 
         {/* Fixed Edit button */}
         <TouchableOpacity
-          style={[styles.editTab, styles.fixedButton]}
+          style={styles.edgeButton}
           onPress={onEditPress}
           activeOpacity={0.7}
         >

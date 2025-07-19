@@ -1,13 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, forwardRef, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, TextInput } from 'react-native';
 import { Check, X } from 'lucide-react-native';
 import { useTheme } from '../theme/ThemeContext';
 
-function getStyles(theme) {
+function getStyles(theme, textSize = 18) {
   return StyleSheet.create({
     container: {
       flexDirection: 'row',
-      alignItems: 'flex-start',
+      alignItems: 'center', // changed from 'flex-start' to 'center'
       marginVertical: 4,
     },
     checkbox: {
@@ -19,7 +19,7 @@ function getStyles(theme) {
       alignItems: 'center',
       justifyContent: 'center',
       marginRight: 12,
-      marginTop: 2,
+      // marginTop: 2, // removed for better alignment
     },
     checkboxCompleted: {
       backgroundColor: '#10b981',
@@ -32,7 +32,7 @@ function getStyles(theme) {
     },
     textInput: {
       flex: 1,
-      fontSize: 16,
+      fontSize: textSize,
       color: theme === 'dark' ? '#fff' : '#222',
       backgroundColor: 'transparent',
       paddingVertical: 8,
@@ -49,9 +49,9 @@ function getStyles(theme) {
     },
     text: {
       flex: 1,
-      fontSize: 16,
+      fontSize: textSize,
       color: theme === 'dark' ? '#fff' : '#222',
-      lineHeight: 22,
+      lineHeight: textSize + 6,
       paddingVertical: 8,
     },
     completedText: {
@@ -61,11 +61,30 @@ function getStyles(theme) {
   });
 }
 
-export default function ChecklistItem({ item, onToggle, onUpdate, onDelete, editable = false }) {
+export default forwardRef(function ChecklistItem({ item, onToggle, onUpdate, onDelete, editable = false, autoFocus = false, onSubmitEditing, textSize = 18 }, ref) {
   const { theme } = useTheme();
-  const styles = getStyles(theme);
+  const styles = getStyles(theme, textSize);
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(item.text || '');
+  const inputRef = useRef(null);
+
+  // Allow parent to control focus and blur
+  React.useImperativeHandle(ref, () => ({
+    focus: () => {
+      if (inputRef.current) inputRef.current.focus();
+    },
+    blur: () => {
+      if (inputRef.current) inputRef.current.blur();
+    }
+  }));
+
+  useEffect(() => {
+    if (autoFocus && inputRef.current) {
+      setTimeout(() => {
+        inputRef.current && inputRef.current.focus();
+      }, 50);
+    }
+  }, [autoFocus]);
 
   const handleTextChange = (text) => {
     setEditText(text);
@@ -75,6 +94,8 @@ export default function ChecklistItem({ item, onToggle, onUpdate, onDelete, edit
   const handleSubmitEditing = () => {
     if (editText.trim() === '') {
       onDelete(item.id);
+    } else if (onSubmitEditing) {
+      onSubmitEditing();
     }
   };
 
@@ -97,15 +118,16 @@ export default function ChecklistItem({ item, onToggle, onUpdate, onDelete, edit
       {editable ? (
         <View style={styles.inputContainer}>
           <TextInput
+            ref={ref || inputRef}
             style={[styles.textInput, item.completed && styles.completedInput]}
             value={editText}
             onChangeText={handleTextChange}
             onSubmitEditing={handleSubmitEditing}
-            onKeyPress={handleKeyPress}
             placeholder="Enter item text..."
             placeholderTextColor="#666"
             multiline={false}
-            blurOnSubmit={true}
+            blurOnSubmit={false}
+            autoFocus={autoFocus}
           />
           <TouchableOpacity 
             onPress={() => onDelete(item.id)} 
@@ -122,4 +144,4 @@ export default function ChecklistItem({ item, onToggle, onUpdate, onDelete, edit
       )}
     </View>
   );
-}
+});

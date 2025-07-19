@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   View, 
   Text, 
@@ -16,7 +16,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { StorageHelper } from '../utils/storage';
 import { CategoryHelpers } from '../utils/categoryHelpers';
 import ChecklistItem from '../components/ChecklistItem';
-import { useTheme } from '../theme/ThemeContext';
+import { useTheme, PRIMARY_COLOR } from '../theme/ThemeContext';
 
 interface ChecklistItem {
   id: string;
@@ -33,6 +33,7 @@ interface Note {
   id?: string;
   createdAt?: string;
   updatedAt?: string;
+  deletedAt?: string; // Added for soft delete
 }
 
 interface Category {
@@ -41,7 +42,7 @@ interface Category {
   color: string;
 }
 
-function getStyles(theme: string) {
+function getStyles(theme: string, textSizePx: number) {
   return StyleSheet.create({
     container: {
       flex: 1,
@@ -77,7 +78,7 @@ function getStyles(theme: string) {
       marginRight: 8,
     },
     categoryText: {
-      fontSize: 14,
+      fontSize: textSizePx,
       color: theme === 'dark' ? '#fff' : '#222',
       marginRight: 4,
     },
@@ -92,7 +93,7 @@ function getStyles(theme: string) {
       marginBottom: 24,
     },
     titleInput: {
-      fontSize: 24,
+      fontSize: textSizePx,
       fontWeight: '600',
       color: theme === 'dark' ? '#fff' : '#222',
       backgroundColor: theme === 'dark' ? '#2a2a2a' : '#f3f4f6',
@@ -108,10 +109,10 @@ function getStyles(theme: string) {
       marginLeft: 8,
     },
     activeControl: {
-      backgroundColor: '#3b82f6',
+      backgroundColor: PRIMARY_COLOR,
     },
     contentInput: {
-      fontSize: 16,
+      fontSize: textSizePx,
       color: theme === 'dark' ? '#fff' : '#222',
       backgroundColor: theme === 'dark' ? '#2a2a2a' : '#f3f4f6',
       borderRadius: 12,
@@ -133,8 +134,8 @@ function getStyles(theme: string) {
       marginTop: 8,
     },
     addItemText: {
-      fontSize: 16,
-      color: '#3b82f6',
+      fontSize: textSizePx,
+      color: PRIMARY_COLOR,
       marginLeft: 8,
     },
     saveFab: {
@@ -144,7 +145,7 @@ function getStyles(theme: string) {
       width: 56,
       height: 56,
       borderRadius: 28,
-      backgroundColor: '#3b82f6',
+      backgroundColor: PRIMARY_COLOR,
       justifyContent: 'center',
       alignItems: 'center',
       elevation: 8,
@@ -169,7 +170,7 @@ function getStyles(theme: string) {
       maxHeight: 400,
     },
     pickerTitle: {
-      fontSize: 16,
+      fontSize: textSizePx,
       fontWeight: '600',
       color: theme === 'dark' ? '#fff' : '#222',
       marginBottom: 16,
@@ -184,10 +185,10 @@ function getStyles(theme: string) {
       backgroundColor: theme === 'dark' ? '#232323' : '#f3f4f6',
     },
     selectedCategoryOption: {
-      backgroundColor: '#3b82f6' + '20',
+      backgroundColor: PRIMARY_COLOR + '20',
     },
     categoryOptionText: {
-      fontSize: 16,
+      fontSize: textSizePx,
       color: theme === 'dark' ? '#fff' : '#222',
       flex: 1,
       marginLeft: 8,
@@ -197,23 +198,36 @@ function getStyles(theme: string) {
 
 export default function NoteEditor() {
   const router = useRouter();
-  const { noteId, categoryId: initialCategoryId, type: initialType } = useLocalSearchParams();
+  let { noteId, categoryId: initialCategoryId, type: initialType } = useLocalSearchParams();
+  // Ensure categoryId and type are always strings
+  if (Array.isArray(initialCategoryId)) initialCategoryId = initialCategoryId[0];
+  if (Array.isArray(initialType)) initialType = initialType[0];
   const [note, setNote] = useState<Note>({
     title: '',
     content: '',
     categoryId: initialCategoryId || 'personal',
-    type: initialType || 'text',
+    type: (initialType as 'text' | 'checklist') || 'text',
     items: []
   });
   const [categories, setCategories] = useState<Category[]>([]);
   const [isEditing, setIsEditing] = useState<boolean>(!noteId);
   const [showCategoryPicker, setShowCategoryPicker] = useState<boolean>(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState<boolean>(false);
-  const { theme } = useTheme();
-  const styles = getStyles(theme);
+  const { theme, textSizePx } = useTheme();
+  const styles = getStyles(theme, textSizePx);
+  const titleRef = useRef(null);
+  const contentRef = useRef(null);
+  const checklistRefs = useRef<Array<any>>([]);
 
   useEffect(() => {
     loadData();
+  }, []);
+
+  useEffect(() => {
+    // Focus title on mount
+    if (titleRef.current) {
+      titleRef.current.focus();
+    }
   }, []);
 
   const loadData = async () => {
@@ -223,7 +237,7 @@ export default function NoteEditor() {
 
       if (noteId) {
         const notes = await StorageHelper.getNotes();
-        const existingNote = (notes as Note[]).find((n: Note) => n.id === noteId);
+        const existingNote = (notes as Note[]).find((n: Note) => n.id === noteId && !n.deletedAt);
         if (existingNote) {
           setNote(existingNote);
         }
@@ -232,7 +246,7 @@ export default function NoteEditor() {
         setNote(prev => ({
           ...prev,
           categoryId: initialCategoryId || 'personal',
-          type: initialType || 'text'
+          type: (initialType as 'text' | 'checklist') || 'text'
         }));
       }
     } catch (error) {
@@ -344,16 +358,23 @@ export default function NoteEditor() {
   };
 
   const handleAddChecklistItem = () => {
-    const newItem: ChecklistItem = {
-      id: Date.now().toString(),
-      text: '',
-      completed: false
-    };
-    setNote((prev: Note) => ({
-      ...prev,
-      items: [...prev.items, newItem]
-    }));
+    setNote((prev: Note) => {
+      const newItem: ChecklistItem = {
+        id: Date.now().toString(),
+        text: '',
+        completed: false
+      };
+      const newItems = [...prev.items, newItem];
+      return {
+        ...prev,
+        items: newItems
+      };
+    });
     setHasUnsavedChanges(true);
+  };
+
+  const handleChecklistItemSubmit = () => {
+    handleAddChecklistItem();
   };
 
   const handleCategorySelect = (categoryId: string) => {
@@ -381,6 +402,18 @@ export default function NoteEditor() {
   const handleContentChange = (field: keyof Note, value: string) => {
     setNote((prev: Note) => ({ ...prev, [field]: value }));
     setHasUnsavedChanges(true);
+  };
+
+  const handleTitleSubmit = () => {
+    if (note.type === 'text') {
+      if (contentRef.current) (contentRef.current as any).focus();
+    } else if (note.type === 'checklist') {
+      if (note.items.length === 0) {
+        handleAddChecklistItem(); // Add and focus first item
+      } else {
+        // setFocusChecklistIndex(0); // This line is removed
+      }
+    }
   };
 
   const selectedCategory = categories.find((cat: Category) => cat.id === note.categoryId);
@@ -412,18 +445,6 @@ export default function NoteEditor() {
         </View>
 
         <View style={styles.headerRight}>
-          <TouchableOpacity
-            style={[styles.controlButton, note.type === 'checklist' && styles.activeControl]}
-            onPress={handleTypeToggle}
-            activeOpacity={0.7}
-          >
-            {note.type === 'checklist' ? (
-              <CheckSquare size={20} color="#3b82f6" />
-            ) : (
-              <FileText size={20} color="#666" />
-            )}
-          </TouchableOpacity>
-
           {noteId && (
             <TouchableOpacity
               style={styles.headerButton}
@@ -439,18 +460,22 @@ export default function NoteEditor() {
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.section}>
           <TextInput
+            ref={titleRef}
             style={styles.titleInput}
             value={note.title}
             onChangeText={(text) => handleContentChange('title', text)}
             placeholder="Note title..."
             placeholderTextColor="#666"
             multiline
+            onSubmitEditing={handleTitleSubmit}
+            returnKeyType={note.type === 'text' ? 'next' : 'done'}
           />
         </View>
 
         <View style={styles.section}>
           {note.type === 'text' ? (
             <TextInput
+              ref={contentRef}
               style={styles.contentInput}
               value={note.content}
               onChangeText={(text) => handleContentChange('content', text)}
@@ -461,25 +486,54 @@ export default function NoteEditor() {
             />
           ) : (
             <View style={styles.checklistContainer}>
-              {note.items.map((item) => (
-                <ChecklistItem
-                  key={item.id}
-                  item={item}
-                  onToggle={handleChecklistToggle}
-                  onUpdate={handleChecklistUpdate}
-                  onDelete={handleChecklistDelete}
-                  editable={true}
-                />
-              ))}
-              
+              {/* Active (not completed) tasks */}
+              {note.items.filter(item => !item.completed).map((item, filteredIdx, filteredArr) => {
+                // Find the index of this item in the full note.items array
+                const fullIdx = note.items.findIndex(i => i.id === item.id);
+                // If this is the last item, pass a callback ref that focuses it
+                const isLast = filteredIdx === filteredArr.length - 1;
+                return (
+                  <ChecklistItem
+                    key={item.id}
+                    ref={isLast ? (el => { if (el) el.focus(); checklistRefs.current[fullIdx] = el; }) : (el => { checklistRefs.current[fullIdx] = el; })}
+                    item={item}
+                    onToggle={handleChecklistToggle}
+                    onUpdate={handleChecklistUpdate}
+                    onDelete={handleChecklistDelete}
+                    editable={true}
+                    onSubmitEditing={handleChecklistItemSubmit}
+                    textSize={textSizePx}
+                  />
+                );
+              })}
               <TouchableOpacity
                 style={styles.addItemButton}
                 onPress={handleAddChecklistItem}
                 activeOpacity={0.7}
               >
-                <Plus size={20} color="#3b82f6" />
+                <Plus size={20} color={PRIMARY_COLOR} />
                 <Text style={styles.addItemText}>Add item</Text>
               </TouchableOpacity>
+              {/* Finished (completed) tasks */}
+              {note.items.some(item => item.completed) && (
+                <View style={{ marginTop: 24 }}>
+                  <Text style={{ fontWeight: 'bold', color: PRIMARY_COLOR, marginBottom: 8 }}>Finished Tasks</Text>
+                  {note.items.filter(item => item.completed).map((item, idx) => (
+                    <ChecklistItem
+                      key={item.id}
+                      ref={null}
+                      item={item}
+                      onToggle={handleChecklistToggle}
+                      onUpdate={handleChecklistUpdate}
+                      onDelete={handleChecklistDelete}
+                      editable={true}
+                      autoFocus={false}
+                      onSubmitEditing={() => {}}
+                      textSize={textSizePx}
+                    />
+                  ))}
+                </View>
+              )}
             </View>
           )}
         </View>
@@ -518,7 +572,7 @@ export default function NoteEditor() {
               >
                 <View style={[styles.categoryDot, { backgroundColor: category.color }]} />
                 <Text style={styles.categoryOptionText}>{category.name}</Text>
-                {note.categoryId === category.id && <Check size={16} color="#3b82f6" />}
+                {note.categoryId === category.id && <Check size={16} color={PRIMARY_COLOR} />}
               </TouchableOpacity>
             ))}
           </View>

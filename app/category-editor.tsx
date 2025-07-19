@@ -9,11 +9,12 @@ import {
   Alert,
   Modal
 } from 'react-native';
-import { ArrowLeft, Plus, CreditCard as Edit3, Trash2, Palette, Check, X } from 'lucide-react-native';
+import { ArrowLeft, Plus, CreditCard as Edit3, Trash2, Palette, Check, X, Pencil } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { StorageHelper } from '../utils/storage';
 import { CategoryHelpers } from '../utils/categoryHelpers';
 import { useTheme } from '../theme/ThemeContext';
+import { PRIMARY_COLOR } from '../theme/ThemeContext';
 
 interface Category {
   id: string;
@@ -122,7 +123,7 @@ function getStyles(theme: string) {
       color: theme === 'dark' ? '#fff' : '#222',
       marginBottom: 24,
       borderWidth: 1,
-      borderColor: '#3b82f6',
+      borderColor: PRIMARY_COLOR,
     },
     colorSection: {
       marginBottom: 24,
@@ -147,7 +148,7 @@ function getStyles(theme: string) {
       borderColor: 'transparent',
     },
     selectedColorOption: {
-      borderColor: '#3b82f6',
+      borderColor: PRIMARY_COLOR,
     },
     modalActions: {
       flexDirection: 'row',
@@ -170,7 +171,7 @@ function getStyles(theme: string) {
       flex: 1,
       padding: 16,
       borderRadius: 8,
-      backgroundColor: '#3b82f6',
+      backgroundColor: PRIMARY_COLOR,
       marginLeft: 8,
       alignItems: 'center',
     },
@@ -320,7 +321,7 @@ export default function CategoryEditor() {
           onPress={() => handleEditCategory(item)}
           activeOpacity={0.7}
         >
-          <Edit3 size={20} color="#3b82f6" />
+          <Pencil size={20} color={PRIMARY_COLOR} />
         </TouchableOpacity>
         
         {!['personal', 'work', 'other'].includes(item.id) && (
@@ -357,7 +358,7 @@ export default function CategoryEditor() {
           onPress={() => router.back()}
           activeOpacity={0.7}
         >
-          <ArrowLeft size={24} color="#fff" />
+          <ArrowLeft size={24} color={theme === 'dark' ? '#fff' : '#222'} />
         </TouchableOpacity>
         
         <Text style={styles.headerTitle}>Categories</Text>
@@ -367,7 +368,7 @@ export default function CategoryEditor() {
           onPress={() => setShowAddModal(true)}
           activeOpacity={0.7}
         >
-          <Plus size={24} color="#3b82f6" />
+          <Plus size={24} color={PRIMARY_COLOR} />
         </TouchableOpacity>
       </View>
 

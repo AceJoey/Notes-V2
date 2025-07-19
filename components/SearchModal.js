@@ -25,7 +25,7 @@ function getStyles(theme) {
       backgroundColor: theme === 'dark' ? '#1a1a1a' : '#fff',
       margin: 16,
       borderRadius: 16,
-      maxHeight: '80%',
+      flex: 1,
     },
     header: {
       flexDirection: 'row',
@@ -115,11 +115,14 @@ export default function SearchModal({
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
 
+  // Debug: log notes and categories
+  console.log('SearchModal notes:', notes, 'categories:', categories);
+
   useEffect(() => {
     if (searchQuery.trim()) {
       performSearch(searchQuery.trim());
     } else {
-      setSearchResults([]);
+      setSearchResults([]); // Do not show suggestions when empty
     }
   }, [searchQuery, notes, selectedCategory]);
 

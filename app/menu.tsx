@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Switch, Alert, Animated, Easing } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Switch, Alert, Animated, Easing, Slider } from 'react-native';
 import { 
   Settings, 
   Palette, 
@@ -16,6 +16,7 @@ import {
 import { StorageHelper } from '../utils/storage';
 import { useTheme } from '../theme/ThemeContext';
 import { useRouter } from 'expo-router';
+import { PRIMARY_COLOR } from '../theme/ThemeContext';
 
 function getStyles(theme) {
   return StyleSheet.create({
@@ -27,6 +28,9 @@ function getStyles(theme) {
       paddingHorizontal: 16,
       paddingTop: 60,
       paddingBottom: 20,
+    },
+    headerSpacer: {
+      height: 30,
     },
     headerTitle: {
       fontSize: 28,
@@ -49,7 +53,7 @@ function getStyles(theme) {
     statNumber: {
       fontSize: 24,
       fontWeight: '700',
-      color: '#3b82f6',
+      color: PRIMARY_COLOR,
       marginBottom: 4,
     },
     statLabel: {
@@ -208,6 +212,10 @@ export default function MenuScreen() {
     );
   };
 
+  const handleRecycleBin = () => {
+    router.push('/recycle-bin');
+  };
+
   const menuItems = [
     {
       title: 'Theme',
@@ -247,6 +255,13 @@ export default function MenuScreen() {
       type: 'button',
       onPress: handleAbout,
     },
+    {
+      title: 'Recycle Bin',
+      icon: Trash2,
+      type: 'button',
+      onPress: handleRecycleBin,
+      color: '#e11d48',
+    },
   ];
 
   const renderMenuItem = (item, index) => {
@@ -271,7 +286,7 @@ export default function MenuScreen() {
           <Switch
             value={item.value}
             onValueChange={item.onToggle}
-            trackColor={{ false: '#333', true: '#3b82f6' }}
+            trackColor={{ false: '#333', true: PRIMARY_COLOR }}
             thumbColor={item.value ? '#fff' : '#ccc'}
           />
         ) : (
@@ -291,6 +306,7 @@ export default function MenuScreen() {
           <Text style={styles.headerTitle}>Settings</Text>
         </View>
       </View>
+      <View style={styles.headerSpacer} />
 
       <View style={styles.statsContainer}>
         <View style={styles.statCard}>
@@ -304,6 +320,17 @@ export default function MenuScreen() {
       </View>
 
       <View style={styles.menuContainer}>
+        {/* Font Size Menu Item */}
+        <TouchableOpacity
+          style={styles.menuItem}
+          onPress={() => router.push('/font-size')}
+          activeOpacity={0.7}
+        >
+          <View style={styles.menuItemLeft}>
+            <Text style={styles.menuItemText}>Font size</Text>
+          </View>
+        </TouchableOpacity>
+        {/* Existing menu items */}
         {menuItems.map((item, index) => renderMenuItem(item, index))}
       </View>
 

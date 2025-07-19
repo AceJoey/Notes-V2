@@ -1,6 +1,6 @@
 import { Tabs } from 'expo-router';
 import { FileText, Calendar, List } from 'lucide-react-native';
-import { useTheme } from '../../theme/ThemeContext';
+import { useTheme, PRIMARY_COLOR } from '../../theme/ThemeContext';
 
 export default function TabLayout() {
   const { theme } = useTheme();
@@ -15,7 +15,7 @@ export default function TabLayout() {
           height: 60,
           paddingBottom: 8,
         },
-        tabBarActiveTintColor: '#3b82f6',
+        tabBarActiveTintColor: PRIMARY_COLOR,
         tabBarInactiveTintColor: theme === 'dark' ? '#666' : '#9ca3af',
       }}>
       <Tabs.Screen

@@ -5,7 +5,7 @@ import { Plus, FileText, SquareCheck as CheckSquare, Menu as MenuIcon } from 'lu
 import { useRouter } from 'expo-router';
 import { StorageHelper } from '../../utils/storage';
 import { CategoryHelpers } from '../../utils/categoryHelpers';
-import { useTheme } from '../../theme/ThemeContext';
+import { useTheme, PRIMARY_COLOR } from '../../theme/ThemeContext';
 
 interface Note {
   id: string;
@@ -53,7 +53,7 @@ function getStyles(theme: string) {
     },
     headerButtonText: {
       fontSize: 16,
-      color: '#3b82f6',
+      color: PRIMARY_COLOR,
       fontWeight: '600',
     },
     headerActions: {
@@ -158,7 +158,7 @@ function getStyles(theme: string) {
       width: 72,
       height: 72,
       borderRadius: 36,
-      backgroundColor: '#3b82f6',
+      backgroundColor: PRIMARY_COLOR,
       justifyContent: 'center',
       alignItems: 'center',
       elevation: 8,
@@ -168,7 +168,7 @@ function getStyles(theme: string) {
       shadowRadius: 8,
     },
     highlightTile: {
-      backgroundColor: '#3b82f6',
+      backgroundColor: PRIMARY_COLOR,
       borderRadius: 8,
       paddingHorizontal: 8,
       paddingVertical: 2,
@@ -191,7 +191,7 @@ function getStyles(theme: string) {
       paddingHorizontal: 12,
       paddingVertical: 6,
       borderRadius: 8,
-      backgroundColor: '#3b82f6',
+      backgroundColor: PRIMARY_COLOR,
       marginLeft: 8,
     },
     weekToggleButtonText: {
@@ -199,7 +199,7 @@ function getStyles(theme: string) {
       fontWeight: '600',
     },
     todayButton: {
-      backgroundColor: '#3b82f6',
+      backgroundColor: PRIMARY_COLOR,
       paddingHorizontal: 16,
       paddingVertical: 8,
       borderRadius: 20,
@@ -257,7 +257,7 @@ export default function CalendarScreen() {
           marked: true,
           customStyles: {
             container: {
-              backgroundColor: '#3b82f6',
+              backgroundColor: PRIMARY_COLOR,
               borderRadius: 8,
             },
             text: {
@@ -272,7 +272,7 @@ export default function CalendarScreen() {
       marked[selectedDate] = {
         ...(marked[selectedDate] || {}),
         selected: true,
-        selectedColor: '#3b82f6',
+        selectedColor: PRIMARY_COLOR,
       };
     }
     setMarkedDates(marked);
@@ -372,8 +372,11 @@ export default function CalendarScreen() {
           </TouchableOpacity>
         </View>
       </View>
-      <View style={{ alignItems: 'flex-end', marginRight: 16, marginBottom: 8 }}>
-        <TouchableOpacity style={styles.todayButton} onPress={() => setSelectedDate(today)}>
+      <View style={{ alignItems: 'center', marginBottom: 8 }}>
+        <TouchableOpacity style={styles.todayButton} onPress={() => {
+          setSelectedDate(today);
+          setCalendarKey(prev => prev + 1); // force calendar to jump to today
+        }}>
           <Text style={styles.todayButtonText}>Today</Text>
         </TouchableOpacity>
       </View>
@@ -388,16 +391,16 @@ export default function CalendarScreen() {
         theme={{
           calendarBackground: theme === 'dark' ? '#1a1a1a' : '#fff',
           textSectionTitleColor: theme === 'dark' ? '#666' : '#888',
-          selectedDayBackgroundColor: '#3b82f6',
+          selectedDayBackgroundColor: PRIMARY_COLOR,
           selectedDayTextColor: '#fff',
-          todayTextColor: '#3b82f6',
+          todayTextColor: PRIMARY_COLOR,
           dayTextColor: theme === 'dark' ? '#fff' : '#222',
           textDisabledColor: theme === 'dark' ? '#333' : '#ccc',
-          dotColor: '#3b82f6',
+          dotColor: PRIMARY_COLOR,
           selectedDotColor: '#fff',
-          arrowColor: '#3b82f6',
+          arrowColor: PRIMARY_COLOR,
           monthTextColor: theme === 'dark' ? '#fff' : '#222',
-          indicatorColor: '#3b82f6',
+          indicatorColor: PRIMARY_COLOR,
           textDayFontWeight: '500',
           textMonthFontWeight: '600',
           textDayHeaderFontWeight: '600',

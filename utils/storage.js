@@ -42,6 +42,7 @@ export const StorageHelper = {
       ...note,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
+      deletedAt: null, // Add deletedAt property
     };
     notes.push(newNote);
     await this.saveNotes(notes);
@@ -63,7 +64,18 @@ export const StorageHelper = {
     return null;
   },
 
+  // Soft delete: set deletedAt timestamp
   async deleteNote(id) {
+    const notes = await this.getNotes();
+    const index = notes.findIndex(note => note.id === id);
+    if (index !== -1) {
+      notes[index].deletedAt = new Date().toISOString();
+      await this.saveNotes(notes);
+    }
+  },
+
+  // Hard delete: remove from storage
+  async permanentlyDeleteNote(id) {
     const notes = await this.getNotes();
     const filteredNotes = notes.filter(note => note.id !== id);
     await this.saveNotes(filteredNotes);

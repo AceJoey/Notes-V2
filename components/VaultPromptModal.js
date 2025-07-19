@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, Modal, TouchableOpacity, TextInput, Alert } from 'react-native';
 import { X, Lock } from 'lucide-react-native';
+import { PRIMARY_COLOR } from '../theme/ThemeContext';
 
 export default function VaultPromptModal({ visible, onClose }) {
   const [pin, setPin] = useState('');
@@ -32,7 +33,7 @@ export default function VaultPromptModal({ visible, onClose }) {
         <View style={styles.modal}>
           <View style={styles.header}>
             <View style={styles.titleContainer}>
-              <Lock size={24} color="#3b82f6" />
+              <Lock size={24} color={PRIMARY_COLOR} />
               <Text style={styles.title}>Vault Access</Text>
             </View>
             <TouchableOpacity onPress={handleClose} style={styles.closeButton}>
@@ -125,7 +126,7 @@ const styles = StyleSheet.create({
     color: '#fff',
     textAlign: 'center',
     borderWidth: 2,
-    borderColor: '#3b82f6',
+    borderColor: PRIMARY_COLOR, // pinInput
     marginBottom: 24,
   },
   actions: {
@@ -149,7 +150,7 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 16,
     borderRadius: 8,
-    backgroundColor: '#3b82f6',
+    backgroundColor: PRIMARY_COLOR, // submitButton
     marginLeft: 8,
     alignItems: 'center',
   },

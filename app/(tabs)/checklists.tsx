@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useLayoutEffect } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, Alert, Modal } from 'react-native';
-import { Search, SlidersHorizontal, Menu as MenuIcon, Plus, CreditCard as Edit3, Trash2 } from 'lucide-react-native';
+import { Search, SlidersHorizontal, Menu as MenuIcon, Plus, CreditCard as Edit3, Trash2, FileText } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
+import { useNavigation } from '@react-navigation/native';
 import { StorageHelper } from '../../utils/storage';
 import { CategoryHelpers } from '../../utils/categoryHelpers';
 import NoteCard from '../../components/NoteCard';
@@ -9,7 +10,7 @@ import CategoryTabs from '../../components/CategoryTabs';
 import VaultPromptModal from '../../components/VaultPromptModal';
 import SearchModal from '../../components/SearchModal';
 import SortModal from '../../components/SortModal';
-import { useTheme } from '../../theme/ThemeContext';
+import { useTheme, PRIMARY_COLOR } from '../../theme/ThemeContext';
 import { useFocusEffect } from 'expo-router';
 
 interface Note {
@@ -21,6 +22,7 @@ interface Note {
   items: { id: string; text: string; completed: boolean }[];
   createdAt: string;
   updatedAt: string;
+  deletedAt?: string;
 }
 
 function getStyles(theme: string) {
@@ -31,6 +33,20 @@ function getStyles(theme: string) {
     },
     emptyContainer: {
       flex: 1,
+    },
+    fixedHeader: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      zIndex: 10,
+      backgroundColor: theme === 'dark' ? '#1a1a1a' : '#fff',
+      // Add shadow for separation
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.08,
+      shadowRadius: 4,
+      elevation: 4,
     },
     header: {
       flexDirection: 'row',
@@ -95,7 +111,7 @@ function getStyles(theme: string) {
       width: 72,
       height: 72,
       borderRadius: 36,
-      backgroundColor: '#3b82f6',
+      backgroundColor: PRIMARY_COLOR,
       justifyContent: 'center',
       alignItems: 'center',
       elevation: 8,
@@ -105,7 +121,7 @@ function getStyles(theme: string) {
       shadowRadius: 8,
     },
     viewAllButton: {
-      backgroundColor: '#3b82f6',
+      backgroundColor: PRIMARY_COLOR,
       paddingHorizontal: 24,
       paddingVertical: 12,
       borderRadius: 24,
@@ -148,6 +164,7 @@ function getStyles(theme: string) {
 
 export default function ChecklistScreen() {
   const router = useRouter();
+  const navigation = useNavigation();
   const { theme } = useTheme();
   const styles = getStyles(theme);
   const [notes, setNotes] = useState<Note[]>([]);
@@ -161,6 +178,15 @@ export default function ChecklistScreen() {
   const [searchModalVisible, setSearchModalVisible] = useState<boolean>(false);
   const [sortModalVisible, setSortModalVisible] = useState<boolean>(false);
   const [currentSort, setCurrentSort] = useState<string>('created-desc');
+  const [pullDistance, setPullDistance] = useState(0);
+  const [showVaultPrompt, setShowVaultPrompt] = useState(false);
+  const vaultThreshold = 100;
+  const flatListRef = useRef(null);
+  const [headerHeight, setHeaderHeight] = useState(0);
+  const headerRef = useRef(null);
+  const [selectedNotes, setSelectedNotes] = useState<string[]>([]);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [moveModalVisible, setMoveModalVisible] = useState(false);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -168,13 +194,26 @@ export default function ChecklistScreen() {
     }, [])
   );
 
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      tabBarStyle: selectionMode
+        ? { display: 'none' }
+        : {
+            backgroundColor: theme === 'dark' ? '#1a1a1a' : '#fff',
+            borderTopColor: theme === 'dark' ? '#333' : '#e5e7eb',
+            height: 60,
+            paddingBottom: 8,
+          },
+    });
+  }, [selectionMode, theme, navigation]);
+
   const loadData = async () => {
     try {
       const [loadedNotes, loadedCategories] = await Promise.all([
         StorageHelper.getNotes(),
         StorageHelper.getCategories()
       ]);
-      setNotes(loadedNotes);
+      setNotes(loadedNotes.filter(n => !n.deletedAt));
       setCategories(loadedCategories);
     } catch (error) {
       console.error('Error loading data:', error);
@@ -198,6 +237,22 @@ export default function ChecklistScreen() {
       }
       setPullStartTime(null);
     }
+  };
+
+  const handleScroll = (event) => {
+    const y = event.nativeEvent.contentOffset.y;
+    if (y < 0) {
+      setPullDistance(-y);
+    } else {
+      setPullDistance(0);
+    }
+  };
+
+  const handleScrollEndDrag = () => {
+    if (pullDistance > vaultThreshold) {
+      setShowVaultPrompt(true);
+    }
+    setPullDistance(0);
   };
 
   const sortNotes = (notes: Note[], sortType: string): Note[] => {
@@ -228,15 +283,64 @@ export default function ChecklistScreen() {
   );
 
   const handleNotePress = (note: Note) => {
-    router.push({
-      pathname: '/note-editor',
-      params: { noteId: note.id }
-    });
+    if (selectionMode) {
+      // Toggle selection
+      setSelectedNotes(selected =>
+        selected.includes(note.id)
+          ? selected.filter(id => id !== note.id)
+          : [...selected, note.id]
+      );
+    } else {
+      router.push({ pathname: '/note-editor', params: { noteId: note.id } });
+    }
   };
 
   const handleNoteLongPress = (note: Note) => {
-    setSelectedNote(note);
-    setNoteOptionsVisible(true);
+    if (!selectionMode) {
+      setSelectionMode(true);
+      setSelectedNotes([note.id]);
+    }
+  };
+
+  const handleExitSelection = () => {
+    setSelectionMode(false);
+    setSelectedNotes([]);
+  };
+
+  const handleBulkDelete = async () => {
+    Alert.alert(
+      'Delete Checklists',
+      `Are you sure you want to delete ${selectedNotes.length} checklists?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            for (const id of selectedNotes) {
+              await StorageHelper.deleteNote(id);
+            }
+            setSelectionMode(false);
+            setSelectedNotes([]);
+            loadData();
+          }
+        }
+      ]
+    );
+  };
+
+  const handleBulkMove = () => {
+    setMoveModalVisible(true);
+  };
+
+  const handleBulkMoveToCategory = async (categoryId: string) => {
+    for (const id of selectedNotes) {
+      await StorageHelper.updateNote(id, { ...notes.find(n => n.id === id), categoryId });
+    }
+    setMoveModalVisible(false);
+    setSelectionMode(false);
+    setSelectedNotes([]);
+    loadData();
   };
 
   const handleDeleteNote = async () => {
@@ -301,17 +405,22 @@ export default function ChecklistScreen() {
       categories={categories}
       onPress={() => handleNotePress(item)}
       onLongPress={() => handleNoteLongPress(item)}
+      selected={selectedNotes.includes(item.id)}
     />
   );
 
   const renderHeader = () => (
-    <View>
-      <View style={styles.header}>
-        <Text style={styles.appTitle}>Checklists</Text>
-        <View style={styles.headerActions}>
-          <TouchableOpacity style={styles.headerButton} onPress={handleSearchPress}>
+    <View
+      style={styles.fixedHeader}
+      ref={headerRef}
+      onLayout={e => setHeaderHeight(e.nativeEvent.layout.height)}
+    >
+      <View style={[styles.header, { justifyContent: 'center' }]}> 
+        <TouchableOpacity style={[styles.headerButton, { position: 'absolute', left: 16, top: 60, zIndex: 10 }]} onPress={handleSearchPress}>
             <Search size={24} color={theme === 'dark' ? '#fff' : '#222'} />
           </TouchableOpacity>
+        <Text style={[styles.appTitle, { textAlign: 'center', flex: 1 }]}>Notes V</Text>
+        <View style={[styles.headerActions, { position: 'absolute', right: 16, top: 60, flexDirection: 'row', zIndex: 10 }]}> 
           <TouchableOpacity style={styles.headerButton} onPress={handleSortPress}>
             <SlidersHorizontal size={24} color={theme === 'dark' ? '#fff' : '#222'} />
           </TouchableOpacity>
@@ -362,11 +471,14 @@ export default function ChecklistScreen() {
 
   return (
     <View style={styles.container}>
+      {/* Fixed header overlay */}
+      {renderHeader()}
       <FlatList
+         ref={flatListRef}
         data={filteredAndSortedNotes}
         renderItem={renderNote}
         keyExtractor={(item: Note) => item.id}
-        ListHeaderComponent={renderHeader}
+         ListHeaderComponent={<View style={{ height: headerHeight + 20 }} />}
         ListEmptyComponent={renderEmptyState}
         refreshControl={
           <RefreshControl
@@ -380,8 +492,20 @@ export default function ChecklistScreen() {
           />
         }
         contentContainerStyle={filteredAndSortedNotes.length === 0 ? styles.emptyContainer : null}
+         onScroll={handleScroll}
+         onScrollEndDrag={handleScrollEndDrag}
+         scrollEventThrottle={16}
       />
+      {/* Vault pull notification */}
+      {pullDistance > 0 && (
+        <View style={{ position: 'absolute', top: 156, left: 0, right: 0, alignItems: 'center', zIndex: 20 }}>
+          <Text style={{ color: '#3b82f6', fontWeight: 'bold', fontSize: 16 }}>
+            {pullDistance > vaultThreshold ? 'Release to open vault' : 'Pull down to open vault'}
+          </Text>
+        </View>
+      )}
 
+      {!selectionMode && (
       <TouchableOpacity
         style={styles.fab}
         onPress={handleCreateNote}
@@ -389,10 +513,11 @@ export default function ChecklistScreen() {
       >
         <Plus size={28} color="#fff" />
       </TouchableOpacity>
+      )}
 
       <VaultPromptModal
-        visible={vaultModalVisible}
-        onClose={() => setVaultModalVisible(false)}
+        visible={vaultModalVisible || showVaultPrompt}
+        onClose={() => { setVaultModalVisible(false); setShowVaultPrompt(false); }}
       />
 
       <Modal
@@ -443,6 +568,56 @@ export default function ChecklistScreen() {
         currentSort={currentSort}
         onSortChange={setCurrentSort}
       />
+
+      {selectionMode && (
+        <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: theme === 'dark' ? '#222' : '#fff', flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', padding: 16, borderTopWidth: 1, borderColor: '#3b82f6', zIndex: 100 }}>
+          <TouchableOpacity onPress={handleBulkDelete} style={{ alignItems: 'center' }}>
+            <Trash2 size={24} color="#ef4444" />
+            <Text style={{ color: '#ef4444', marginTop: 4 }}>Delete</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleBulkMove} style={{ alignItems: 'center' }}>
+            <FileText size={24} color="#3b82f6" />
+            <Text style={{ color: '#3b82f6', marginTop: 4 }}>Move</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleExitSelection} style={{ alignItems: 'center' }}>
+            <Text style={{ color: '#3b82f6', fontWeight: 'bold', fontSize: 16 }}>Exit</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Bulk Move Modal */}
+      {moveModalVisible && (
+        <Modal
+          visible={moveModalVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setMoveModalVisible(false)}
+        >
+          <TouchableOpacity
+            style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end', alignItems: 'center', paddingBottom: 88 }}
+            activeOpacity={1}
+            onPress={() => setMoveModalVisible(false)}
+          >
+            <View style={{ backgroundColor: theme === 'dark' ? '#181a20' : '#fff', borderRadius: 16, padding: 24, minWidth: 250, maxWidth: 350 }}>
+              <Text style={{ fontSize: 18, fontWeight: 'bold', color: theme === 'dark' ? '#fff' : '#222', marginBottom: 16 }}>Move to Category</Text>
+              {categories.filter(cat => cat.id !== 'all').map(category => (
+                <TouchableOpacity
+                  key={category.id}
+                  style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 8, borderRadius: 8, marginBottom: 4, backgroundColor: theme === 'dark' ? '#23272f' : '#f3f4f6' }}
+                  onPress={() => handleBulkMoveToCategory(category.id)}
+                  activeOpacity={0.7}
+                >
+                  <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: category.color, marginRight: 8 }} />
+                  <Text style={{ color: theme === 'dark' ? '#fff' : '#222', fontSize: 16 }}>{category.name}</Text>
+                </TouchableOpacity>
+              ))}
+              <TouchableOpacity onPress={() => setMoveModalVisible(false)} style={{ marginTop: 16, alignItems: 'center' }}>
+                <Text style={{ color: '#3b82f6', fontWeight: 'bold', fontSize: 16 }}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </Modal>
+      )}
     </View>
   );
 } 

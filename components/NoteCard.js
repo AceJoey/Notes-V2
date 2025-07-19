@@ -2,8 +2,9 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Calendar, SquareCheck as CheckSquare, FileText } from 'lucide-react-native';
 import { CategoryHelpers } from '../utils/categoryHelpers';
+import { PRIMARY_COLOR } from '../theme/ThemeContext';
 
-export default function NoteCard({ note, categories, onPress, onLongPress }) {
+export default function NoteCard({ note, categories, onPress, onLongPress, selected = false }) {
   const categoryColor = CategoryHelpers.getCategoryColor(note.categoryId, categories);
   const formattedDate = CategoryHelpers.formatDate(note.createdAt);
 
@@ -18,13 +19,20 @@ export default function NoteCard({ note, categories, onPress, onLongPress }) {
 
   return (
     <TouchableOpacity
-      style={styles.container}
+      style={[styles.container, selected && styles.selected]}
       onPress={onPress}
       onLongPress={onLongPress}
       activeOpacity={0.7}
     >
       <View style={[styles.colorStrip, { backgroundColor: categoryColor }]} />
       <View style={[styles.content, { backgroundColor: categoryColor + '10' }]}>
+        {selected && (
+          <View style={styles.selectedOverlay}>
+            <View style={styles.checkboxOuter}>
+              <View style={styles.checkboxInner} />
+            </View>
+          </View>
+        )}
         <View style={styles.header}>
           <Text style={styles.title} numberOfLines={1}>
             {note.title}
@@ -37,11 +45,11 @@ export default function NoteCard({ note, categories, onPress, onLongPress }) {
             )}
           </View>
         </View>
-        
+
         <Text style={styles.preview} numberOfLines={2}>
           {getPreview()}
         </Text>
-        
+
         <View style={styles.footer}>
           <View style={styles.dateContainer}>
             <Calendar size={14} color="#666" />
@@ -71,6 +79,35 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
+  },
+  selected: {
+    borderWidth: 2,
+    borderColor: PRIMARY_COLOR,
+  },
+  selectedOverlay: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    zIndex: 10,
+    backgroundColor: PRIMARY_COLOR + '26',
+    borderRadius: 16,
+    padding: 2,
+  },
+  checkboxOuter: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: PRIMARY_COLOR,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkboxInner: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: PRIMARY_COLOR,
   },
   colorStrip: {
     width: 6,
