@@ -1,13 +1,5 @@
-import React, { useRef, useState } from 'react';
-import { View, Dimensions, StyleSheet } from 'react-native';
-import { PanGestureHandler, State } from 'react-native-gesture-handler';
-import Animated, {
-  useAnimatedGestureHandler,
-  useAnimatedStyle,
-  useSharedValue,
-  withSpring,
-  runOnJS,
-} from 'react-native-reanimated';
+import React, { useState } from 'react';
+import { View, Dimensions, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -18,56 +10,38 @@ interface SwipeableTabViewProps {
 }
 
 export default function SwipeableTabView({ children, currentIndex, onIndexChange }: SwipeableTabViewProps) {
-  const translateX = useSharedValue(-currentIndex * SCREEN_WIDTH);
-  const [activeIndex, setActiveIndex] = useState(currentIndex);
+  const [scrollViewRef, setScrollViewRef] = useState<ScrollView | null>(null);
 
   React.useEffect(() => {
-    translateX.value = withSpring(-currentIndex * SCREEN_WIDTH);
-    setActiveIndex(currentIndex);
-  }, [currentIndex]);
+    if (scrollViewRef) {
+      scrollViewRef.scrollTo({ x: currentIndex * SCREEN_WIDTH, animated: true });
+    }
+  }, [currentIndex, scrollViewRef]);
 
-  const gestureHandler = useAnimatedGestureHandler({
-    onStart: (_, context: any) => {
-      context.startX = translateX.value;
-    },
-    onActive: (event, context) => {
-      translateX.value = context.startX + event.translationX;
-    },
-    onEnd: (event) => {
-      const shouldMoveToNext = event.translationX < -SCREEN_WIDTH / 3 && activeIndex < children.length - 1;
-      const shouldMoveToPrev = event.translationX > SCREEN_WIDTH / 3 && activeIndex > 0;
-
-      if (shouldMoveToNext) {
-        const newIndex = Math.min(activeIndex + 1, children.length - 1);
-        translateX.value = withSpring(-newIndex * SCREEN_WIDTH);
-        runOnJS(onIndexChange)(newIndex);
-      } else if (shouldMoveToPrev) {
-        const newIndex = Math.max(activeIndex - 1, 0);
-        translateX.value = withSpring(-newIndex * SCREEN_WIDTH);
-        runOnJS(onIndexChange)(newIndex);
-      } else {
-        translateX.value = withSpring(-activeIndex * SCREEN_WIDTH);
-      }
-    },
-  });
-
-  const animatedStyle = useAnimatedStyle(() => {
-    return {
-      transform: [{ translateX: translateX.value }],
-    };
-  });
+  const handleMomentumScrollEnd = (event: any) => {
+    const { contentOffset } = event.nativeEvent;
+    const newIndex = Math.round(contentOffset.x / SCREEN_WIDTH);
+    if (newIndex !== currentIndex) {
+      onIndexChange(newIndex);
+    }
+  };
 
   return (
     <View style={styles.container}>
-      <PanGestureHandler onGestureEvent={gestureHandler}>
-        <Animated.View style={[styles.contentContainer, animatedStyle]}>
-          {children.map((child, index) => (
-            <View key={index} style={styles.page}>
-              {child}
-            </View>
-          ))}
-        </Animated.View>
-      </PanGestureHandler>
+      <ScrollView
+        ref={setScrollViewRef}
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        onMomentumScrollEnd={handleMomentumScrollEnd}
+        style={styles.scrollView}
+      >
+        {children.map((child, index) => (
+          <View key={index} style={styles.page}>
+            {child}
+          </View>
+        ))}
+      </ScrollView>
     </View>
   );
 }
@@ -75,10 +49,8 @@ export default function SwipeableTabView({ children, currentIndex, onIndexChange
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    overflow: 'hidden',
   },
-  contentContainer: {
-    flexDirection: 'row',
+  scrollView: {
     flex: 1,
   },
   page: {

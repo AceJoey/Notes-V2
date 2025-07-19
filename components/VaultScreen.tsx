@@ -12,7 +12,7 @@ function getStyles(theme: string) {
   return StyleSheet.create({
     container: {
       flex: 1,
-      backgroundColor: theme === 'dark' ? '#0a0a0a' : '#f8f9fa',
+      backgroundColor: theme === 'dark' ? '#1a1a1a' : '#fff',
     },
     header: {
       flexDirection: 'row',
@@ -20,18 +20,18 @@ function getStyles(theme: string) {
       paddingHorizontal: 16,
       paddingTop: 60,
       paddingBottom: 20,
-      backgroundColor: theme === 'dark' ? '#0a0a0a' : '#f8f9fa',
+      backgroundColor: theme === 'dark' ? '#1a1a1a' : '#fff',
       borderBottomWidth: 1,
       borderBottomColor: theme === 'dark' ? '#333' : '#e5e7eb',
     },
     backButton: {
       padding: 8,
-      marginRight: 16,
     },
     headerTitle: {
       fontSize: 24,
       fontWeight: '700',
       color: theme === 'dark' ? '#fff' : '#222',
+      marginLeft: 16,
     },
     content: {
       flex: 1,
