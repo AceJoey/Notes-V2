@@ -244,28 +244,6 @@ export default function MenuScreen() {
     },
   ];
 
-  const aboutItem = {
-    title: 'About',
-    icon: Info,
-    type: 'button',
-    onPress: handleAbout,
-  };
-
-  const renderMenuItem = (item, index) => {
-    const Icon = item.icon;
-    
-    return (
-      <TouchableOpacity
-        key={index}
-
-    {
-      title: 'About',
-      icon: Info,
-      type: 'button',
-      onPress: handleAbout,
-    },
-  ];
-
   const renderMenuItem = (item, index) => {
     const Icon = item.icon;
     
@@ -323,6 +301,12 @@ export default function MenuScreen() {
 
       <View style={styles.menuContainer}>
         {menuItems.map((item, index) => renderMenuItem(item, index))}
+        {renderMenuItem({
+          title: 'About',
+          icon: Info,
+          type: 'button',
+          onPress: handleAbout,
+        }, menuItems.length)}
       </View>
 
       <Animated.View style={[styles.footer, { backgroundColor: footerBg }]}>
@@ -335,4 +319,4 @@ export default function MenuScreen() {
       </Animated.View>
     </View>
   );
-} 
+}
