@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Switch, Alert, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Switch, Alert, Animated, Easing, Slider } from 'react-native';
 import { 
   Settings, 
   Palette, 
@@ -107,6 +107,22 @@ export default function MenuScreen() {
   const [notesCount, setNotesCount] = useState(0);
   const styles = getStyles(theme);
   const router = useRouter();
+
+  // Animated value for footer background
+  const anim = useRef(new Animated.Value(theme === 'dark' ? 0 : 1)).current;
+  useEffect(() => {
+    Animated.timing(anim, {
+      toValue: theme === 'dark' ? 0 : 1,
+      duration: 400,
+      easing: Easing.inOut(Easing.ease),
+      useNativeDriver: false,
+    }).start();
+  }, [theme]);
+
+  const footerBg = anim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['#1a1a1a', '#f3f4f6'],
+  });
 
   useEffect(() => {
     loadData();
@@ -234,6 +250,7 @@ export default function MenuScreen() {
       icon: Trash2,
       type: 'button',
       onPress: handleRecycleBin,
+      color: '#e11d48',
     },
     {
       title: 'Clear All Data',
@@ -241,6 +258,12 @@ export default function MenuScreen() {
       type: 'button',
       onPress: handleClearAllData,
       color: '#ef4444',
+    },
+    {
+      title: 'About',
+      icon: Info,
+      type: 'button',
+      onPress: handleAbout,
     },
   ];
 
@@ -301,12 +324,6 @@ export default function MenuScreen() {
 
       <View style={styles.menuContainer}>
         {menuItems.map((item, index) => renderMenuItem(item, index))}
-        {renderMenuItem({
-          title: 'About',
-          icon: Info,
-          type: 'button',
-          onPress: handleAbout,
-        }, menuItems.length)}
       </View>
 
       <Animated.View style={[styles.footer, { backgroundColor: footerBg }]}>
@@ -319,4 +336,4 @@ export default function MenuScreen() {
       </Animated.View>
     </View>
   );
-}
+} 

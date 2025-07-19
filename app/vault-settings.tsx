@@ -23,12 +23,12 @@ function getStyles(theme: string) {
     },
     backButton: {
       padding: 8,
+      marginRight: 16,
     },
     headerTitle: {
       fontSize: 24,
       fontWeight: '700',
       color: theme === 'dark' ? '#fff' : '#222',
-      marginLeft: 16,
     },
     content: {
       flex: 1,
