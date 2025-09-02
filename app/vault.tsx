@@ -1,934 +1,728 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Platform, FlatList, BackHandler, Alert, Image, Dimensions, PanResponder } from 'react-native';
-import { ArrowLeft, FileText, Video, Plus, Lock, Play, Unlock } from 'lucide-react-native';
-import { useTheme, PRIMARY_COLOR } from '../theme/ThemeContext';
-import { useRouter } from 'expo-router';
-import { useFocusEffect } from 'expo-router';
-import { StorageHelper } from '../utils/storage';
-import { vaultFileSystem } from '../utils/vaultFileSystem';
-import PermissionRequest from '../components/PermissionRequest';
-import PhotoViewer from '../components/PhotoViewer';
-import VideoPlayer from '../components/VideoPlayer';
-import SuccessPopup from '../components/SuccessPopup';
+import * as FileSystem from 'expo-file-system';
+import * as MediaLibrary from 'expo-media-library';
+import * as ImagePicker from 'expo-image-picker';
+import { Platform } from 'react-native';
 
-const { width: screenWidth } = Dimensions.get('window');
-
-interface VaultNote {
-  id: string;
-  title: string;
-  content: string;
-  categoryId: string;
-  type: 'text' | 'checklist';
-  items: { id: string; text: string; completed: boolean }[];
-  createdAt: string;
-  updatedAt: string;
-  isVaultNote: boolean;
-  originalId?: string;
-}
-
-// Tab content components
-const NotesTab = ({
-  theme, 
-  onAddPress, 
-  vaultNotes,
-  onNotePress,
-  onNoteUnlock
-}: {
-  theme: string; 
-  onAddPress: () => void; 
-  vaultNotes: VaultNote[];
-  onNotePress: (note: VaultNote) => void;
-  onNoteUnlock: (note: VaultNote) => void;
-}) => (
-  <View style={getTabStyles(theme).container}>
-    {vaultNotes.length === 0 ? (
-      <View style={getTabStyles(theme).content}>
-        <Text style={getTabStyles(theme).emptyTitle}>Secure Notes</Text>
-        <Text style={getTabStyles(theme).emptyText}>
-          Your private notes will appear here. They are encrypted and protected by your vault PIN.
-        </Text>
-      </View>
-    ) : (
-      <FlatList
-        data={vaultNotes}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item }) => (
-          <View style={getTabStyles(theme).noteCard}>
-          <TouchableOpacity 
-              style={getTabStyles(theme).noteContent}
-            onPress={() => onNotePress(item)}
-            activeOpacity={0.7}
-          >
-            <Text style={getTabStyles(theme).noteTitle}>{item.title}</Text>
-              <Text style={getTabStyles(theme).noteContentText} numberOfLines={2}>
-              {item.type === 'checklist' 
-                ? `${item.items?.length || 0} items` 
-                : item.content
-              }
-            </Text>
-            <Text style={getTabStyles(theme).noteDate}>
-              {new Date(item.updatedAt).toLocaleDateString()}
-            </Text>
-          </TouchableOpacity>
-            <TouchableOpacity 
-              style={getTabStyles(theme).unlockButton}
-              onPress={() => onNoteUnlock(item)}
-              activeOpacity={0.7}
-            >
-              <Unlock size={16} color={PRIMARY_COLOR} />
-            </TouchableOpacity>
-          </View>
-        )}
-        contentContainerStyle={getTabStyles(theme).notesList}
-      />
-    )}
-    <TouchableOpacity style={getTabStyles(theme).fab} onPress={onAddPress} activeOpacity={0.8}>
-      <Plus size={24} color="#fff" style={{ marginRight: 6 }} />
-      <Lock size={20} color="#fff" />
-    </TouchableOpacity>
-  </View>
-);
-
-const VideosTab = ({ theme, onAddPress, vaultFiles, onVideoPress }: { 
-  theme: string; 
-  onAddPress: () => void; 
-  vaultFiles: any[];
-  onVideoPress: (index: number) => void;
-}) => {
-  const videoFiles = vaultFiles.filter(file => file.type === 'video');
-  
-  const renderVideoItem = ({ item, index }: { item: any; index: number }) => (
-    <TouchableOpacity 
-      style={getTabStyles(theme).imageGridItem}
-      onPress={() => onVideoPress(index)}
-      activeOpacity={0.8}
-    >
-      <Image 
-        source={{ uri: item.path }}
-        style={getTabStyles(theme).videoThumbnail}
-        resizeMode="cover"
-      />
-      <View style={getTabStyles(theme).playButtonOverlay}>
-        <Play size={24} color="#fff" />
-      </View>
-      <View style={getTabStyles(theme).imageOverlay}>
-        <Text style={getTabStyles(theme).imageDate}>
-          {new Date(item.timestamp).toLocaleDateString()}
-        </Text>
-      </View>
-    </TouchableOpacity>
-  );
-  
-  return (
-    <View style={getTabStyles(theme).container}>
-      {videoFiles.length === 0 ? (
-        <View style={getTabStyles(theme).content}>
-          <Text style={getTabStyles(theme).emptyTitle}>Private Videos</Text>
-          <Text style={getTabStyles(theme).emptyText}>
-            Your private videos will appear here. They are encrypted and protected by your vault PIN.
-          </Text>
-        </View>
-      ) : (
-        <FlatList
-          data={videoFiles}
-          keyExtractor={(item) => item.filename}
-          renderItem={renderVideoItem}
-          numColumns={3}
-          columnWrapperStyle={getTabStyles(theme).imageGridRow}
-          contentContainerStyle={getTabStyles(theme).imageGridList}
-          showsVerticalScrollIndicator={false}
-        />
-      )}
-      <TouchableOpacity style={getTabStyles(theme).fab} onPress={onAddPress} activeOpacity={0.8}>
-        <Plus size={24} color="#fff" style={{ marginRight: 6 }} />
-        <Lock size={20} color="#fff" />
-      </TouchableOpacity>
-    </View>
-  );
-};
-
-const ImagesTab = ({ theme, onAddPress, vaultFiles, onImagePress }: { 
-  theme: string; 
-  onAddPress: () => void; 
-  vaultFiles: any[];
-  onImagePress: (index: number) => void;
-}) => {
-  const imageFiles = vaultFiles.filter(file => file.type === 'image');
-  console.log('ImagesTab: All vault files:', vaultFiles);
-  console.log('ImagesTab: Filtered image files:', imageFiles);
-  
-  const renderImageItem = ({ item, index }: { item: any; index: number }) => (
-    <TouchableOpacity 
-      style={getTabStyles(theme).imageGridItem}
-      onPress={() => onImagePress(index)}
-      activeOpacity={0.8}
-    >
-      <Image 
-        source={{ uri: item.path }}
-        style={getTabStyles(theme).imageThumbnail}
-        resizeMode="cover"
-      />
-      <View style={getTabStyles(theme).imageOverlay}>
-        <Text style={getTabStyles(theme).imageDate}>
-          {new Date(item.timestamp).toLocaleDateString()}
-        </Text>
-      </View>
-    </TouchableOpacity>
-  );
-  
-  return (
-    <View style={getTabStyles(theme).container}>
-      {imageFiles.length === 0 ? (
-        <View style={getTabStyles(theme).content}>
-          <Text style={getTabStyles(theme).emptyTitle}>Private Images</Text>
-          <Text style={getTabStyles(theme).emptyText}>
-            Move images from your device gallery to the vault for secure storage. Original files will be removed from your gallery.
-          </Text>
-        </View>
-      ) : (
-        <FlatList
-          data={imageFiles}
-          keyExtractor={(item) => item.filename}
-          renderItem={renderImageItem}
-          numColumns={3}
-          columnWrapperStyle={getTabStyles(theme).imageGridRow}
-          contentContainerStyle={getTabStyles(theme).imageGridList}
-          showsVerticalScrollIndicator={false}
-        />
-      )}
-      <TouchableOpacity style={getTabStyles(theme).fab} onPress={onAddPress} activeOpacity={0.8}>
-        <Plus size={24} color="#fff" style={{ marginRight: 6 }} />
-        <Lock size={20} color="#fff" />
-      </TouchableOpacity>
-    </View>
-  );
-};
-
-function getStyles(theme: string) {
-  return StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: theme === 'dark' ? '#1a1a1a' : '#fff',
-    },
-    header: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      paddingHorizontal: 16,
-      paddingTop: 60,
-      paddingBottom: 20,
-      borderBottomWidth: 1,
-      borderBottomColor: theme === 'dark' ? '#333' : '#e5e7eb',
-    },
-    backButton: {
-      padding: 8,
-      marginRight: 16,
-    },
-    title: {
-      fontSize: 24,
-      fontWeight: '700',
-      color: theme === 'dark' ? '#fff' : '#222',
-      flex: 1,
-    },
-    tabsContainer: {
-      flexDirection: 'row',
-      backgroundColor: theme === 'dark' ? '#1a1a1a' : '#fff',
-      borderBottomWidth: 1,
-      borderBottomColor: theme === 'dark' ? '#333' : '#e5e7eb',
-    },
-    tab: {
-      flex: 1,
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      paddingVertical: 16,
-      paddingHorizontal: 12,
-    },
-    tabText: {
-      fontSize: 16,
-      fontWeight: '600',
-      marginLeft: 8,
-    },
-    activeTab: {
-      borderBottomWidth: 3,
-      borderBottomColor: PRIMARY_COLOR,
-    },
-    activeTabText: {
-      color: PRIMARY_COLOR,
-    },
-    inactiveTabText: {
-      color: theme === 'dark' ? '#888' : '#666',
-    },
-    contentContainer: {
-      flex: 1,
-    },
-  });
-}
-
-function getTabStyles(theme: string) {
-  return StyleSheet.create({
-    container: {
-      flex: 1,
-      position: 'relative',
-    },
-    content: {
-      flex: 1,
-      justifyContent: 'center',
-      alignItems: 'center',
-      paddingHorizontal: 32,
-    },
-    emptyTitle: {
-      fontSize: 24,
-      fontWeight: '700',
-      color: theme === 'dark' ? '#fff' : '#222',
-      textAlign: 'center',
-      marginBottom: 16,
-    },
-    emptyText: {
-      fontSize: 16,
-      color: theme === 'dark' ? '#ccc' : '#666',
-      textAlign: 'center',
-      lineHeight: 24,
-    },
-    notesList: {
-      padding: 16,
-    },
-    noteCard: {
-      backgroundColor: theme === 'dark' ? '#2a2a2a' : '#f8f9fa',
-      borderRadius: 12,
-      padding: 16,
-      marginBottom: 12,
-      borderLeftWidth: 4,
-      borderLeftColor: PRIMARY_COLOR,
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-    },
-    noteContent: {
-      flex: 1,
-    },
-    noteTitle: {
-      fontSize: 18,
-      fontWeight: '600',
-      color: theme === 'dark' ? '#fff' : '#222',
-      marginBottom: 8,
-    },
-    noteContentText: {
-      fontSize: 14,
-      color: theme === 'dark' ? '#ccc' : '#666',
-      marginBottom: 8,
-    },
-    noteDate: {
-      fontSize: 12,
-      color: theme === 'dark' ? '#888' : '#999',
-    },
-    unlockButton: {
-      padding: 8,
-      marginLeft: 12,
-    },
-    fab: {
-      position: 'absolute',
-      bottom: 32,
-      left: '50%',
-      transform: [{ translateX: -40 }],
-      backgroundColor: PRIMARY_COLOR,
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      paddingHorizontal: 24,
-      paddingVertical: 16,
-      borderRadius: 40,
-      elevation: 8,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.3,
-      shadowRadius: 8,
-      minWidth: 80,
-    },
-    filesList: {
-      padding: 16,
-    },
-    fileCard: {
-      backgroundColor: theme === 'dark' ? '#2a2a2a' : '#f8f9fa',
-      borderRadius: 12,
-      padding: 16,
-      marginBottom: 12,
-      flexDirection: 'row',
-      alignItems: 'center',
-      borderLeftWidth: 4,
-      borderLeftColor: PRIMARY_COLOR,
-    },
-    fileTitle: {
-      fontSize: 16,
-      fontWeight: '600',
-      color: theme === 'dark' ? '#fff' : '#222',
-      marginBottom: 4,
-    },
-    fileInfo: {
-      fontSize: 12,
-      color: theme === 'dark' ? '#888' : '#999',
-    },
-    imageGridList: {
-      padding: 8,
-    },
-    imageGridRow: {
-      justifyContent: 'space-between',
-      paddingHorizontal: 4,
-    },
-    imageGridItem: {
-      width: '32%',
-      aspectRatio: 1,
-      marginBottom: 8,
-      borderRadius: 8,
-      overflow: 'hidden',
-      backgroundColor: theme === 'dark' ? '#2a2a2a' : '#f8f9fa',
-    },
-    imageThumbnail: {
-      width: '100%',
-      height: '100%',
-    },
-    imageOverlay: {
-      position: 'absolute',
-      bottom: 0,
-      left: 0,
-      right: 0,
-      backgroundColor: 'rgba(0, 0, 0, 0.7)',
-      paddingHorizontal: 8,
-      paddingVertical: 4,
-    },
-    imageDate: {
-      fontSize: 10,
-      color: '#fff',
-      textAlign: 'center',
-    },
-    videoThumbnail: {
-      width: '100%',
-      height: '100%',
-      position: 'absolute',
-      top: 0,
-      left: 0,
-    },
-    playButtonOverlay: {
-      position: 'absolute',
-      top: '50%',
-      left: '50%',
-      transform: [{ translateX: -24 }, { translateY: -24 }],
-      width: 48,
-      height: 48,
-      borderRadius: 24,
-      backgroundColor: 'rgba(0, 0, 0, 0.7)',
-      justifyContent: 'center',
-      alignItems: 'center',
-      borderWidth: 2,
-      borderColor: '#fff',
-      zIndex: 10,
-    },
-  });
-}
-
-function VaultScreen() {
-  const { theme } = useTheme();
-  const styles = getStyles(theme);
-  const router = useRouter();
-  const [activeTab, setActiveTab] = useState('notes');
-  const [vaultNotes, setVaultNotes] = useState<VaultNote[]>([]);
-  const [vaultFiles, setVaultFiles] = useState<any[]>([]);
-  const [isFileSystemReady, setIsFileSystemReady] = useState(false);
-  const [permissionsGranted, setPermissionsGranted] = useState(false);
-  const [showPermissionRequest, setShowPermissionRequest] = useState(false);
-  const [showPhotoViewer, setShowPhotoViewer] = useState(false);
-  const [photoViewerIndex, setPhotoViewerIndex] = useState(0);
-  const [showVideoPlayer, setShowVideoPlayer] = useState(false);
-  const [currentVideoPath, setCurrentVideoPath] = useState<string | null>(null);
-  const [showSuccessPopup, setShowSuccessPopup] = useState(false);
-  const [successMessage, setSuccessMessage] = useState('');
-
-  // Swipe gesture handlers
-  const panResponder = PanResponder.create({
-    onStartShouldSetPanResponder: (evt) => {
-      // Only handle single finger touches for horizontal swipe
-      return evt.nativeEvent.touches.length === 1;
-    },
-    onMoveShouldSetPanResponder: (evt, gestureState) => {
-      // Only handle horizontal swipes, not vertical scrolling
-      const { dx, dy } = gestureState;
-      return evt.nativeEvent.touches.length === 1 && Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 10;
-    },
-    onPanResponderGrant: () => {
-      console.log('Vault: Swipe gesture started');
-    },
-    onPanResponderMove: (evt, gestureState) => {
-      if (evt.nativeEvent.touches.length === 1) {
-        console.log('Vault: Swipe move, dx:', gestureState.dx);
-      }
-    },
-    onPanResponderRelease: (evt, gestureState) => {
-      if (evt.nativeEvent.touches.length === 0) {
-        console.log('Vault: Swipe released, dx:', gestureState.dx);
-        const swipeThreshold = screenWidth * 0.2; // 20% of screen width
-        
-        if (gestureState.dx > swipeThreshold) {
-          // Swipe right - go to previous tab
-          console.log('Vault: Swipe right detected');
-          switch (activeTab) {
-            case 'videos':
-              setActiveTab('notes');
-              break;
-            case 'images':
-              setActiveTab('videos');
-              break;
-            default:
-              break;
-          }
-        } else if (gestureState.dx < -swipeThreshold) {
-          // Swipe left - go to next tab
-          console.log('Vault: Swipe left detected');
-          switch (activeTab) {
-            case 'notes':
-              setActiveTab('videos');
-              break;
-            case 'videos':
-              setActiveTab('images');
-              break;
-            default:
-              break;
-          }
-        } else {
-          console.log('Vault: Swipe not strong enough or at boundary');
-        }
-      }
-    },
-  });
-
-  useEffect(() => {
-    initializeVault();
-  }, []);
-
-  // Refresh vault data when screen comes back into focus
-  useFocusEffect(
-    React.useCallback(() => {
-      console.log('Vault: Screen focused, refreshing vault data...');
-      loadVaultNotes();
-      loadVaultFiles();
-    }, [])
-  );
-
-  const initializeVault = async () => {
-    try {
-      // Clean up any existing duplicate IDs first
-      await StorageHelper.cleanupDuplicateIds();
-      
-      // On web, skip permission checks
-      if (Platform.OS === 'web') {
-        console.log('Vault: Web platform - skipping permission checks');
-        setPermissionsGranted(true);
-        setIsFileSystemReady(true);
-        
-        // Load vault notes
-        await loadVaultNotes();
-        
-        // Load vault files
-        await loadVaultFiles();
-        
-        console.log('Vault initialized successfully on web');
-        return;
-      }
-      
-      // Check permissions first (mobile only)
-      const permissions = await vaultFileSystem.checkPermissions();
-      
-      if (!permissions.mediaLibrary) {
-        setShowPermissionRequest(true);
-        return;
-      }
-      
-      setPermissionsGranted(true);
-      
-      // Initialize file system
-      await vaultFileSystem.initialize();
-      setIsFileSystemReady(true);
-      
-      // Load vault notes
-      await loadVaultNotes();
-      
-      // Load vault files
-      await loadVaultFiles();
-      
-      console.log('Vault initialized successfully');
-    } catch (error) {
-      console.error('Error initializing vault:', error);
-      Alert.alert('Error', 'Failed to initialize vault file system');
-    }
-  };
-
-  const handleRequestPermissions = async () => {
-    try {
-      // On web, no permissions needed
-      if (Platform.OS === 'web') {
-        setPermissionsGranted(true);
-        setShowPermissionRequest(false);
-        await initializeVault();
-        return;
-      }
-      
-      const permissions = await vaultFileSystem.requestPermissions();
-      
-      if (permissions.mediaLibrary) {
-        setPermissionsGranted(true);
-        setShowPermissionRequest(false);
-        await initializeVault();
-      } else {
-        Alert.alert('Permissions Required', 'Media library permissions are required to use the vault features.');
-      }
-    } catch (error) {
-      console.error('Error requesting permissions:', error);
-      Alert.alert('Error', 'Failed to request permissions');
-    }
-  };
-
-  // Override native back button behavior
-  useEffect(() => {
-    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
-      // Navigate directly to homepage instead of going back to PIN modal
-      router.push('/(tabs)');
-      return true; // Prevent default back behavior
-    });
-
-    return () => backHandler.remove();
-  }, [router]);
-
-  const loadVaultNotes = async () => {
-    try {
-      const notes = await StorageHelper.getVaultNotes();
-      setVaultNotes(notes);
-    } catch (error) {
-      console.error('Error loading vault notes:', error);
-    }
-  };
-
-  const loadVaultFiles = async () => {
-    try {
-      console.log('Vault: Loading vault files...');
-      
-      // Debug: Get vault info to see what's actually in the directories
-      const vaultInfo = await vaultFileSystem.getVaultInfo();
-      console.log('Vault: Vault info:', vaultInfo);
-      
-      const files = await vaultFileSystem.getVaultFiles();
-      console.log('Vault: Loaded files:', files);
-      setVaultFiles(files);
-    } catch (error) {
-      console.error('Error loading vault files:', error);
-    }
-  };
-
-  const handleBack = () => {
-    // Navigate directly to homepage instead of going back to PIN modal
-    router.push('/(tabs)');
-  };
-
-  const handleNotePress = (note: VaultNote) => {
-    router.push({ pathname: '/note-editor', params: { noteId: note.id, fromVault: 'true' } });
-  };
-
-  const handleNoteUnlock = async (note: VaultNote) => {
-    try {
-      console.log('Vault: Attempting to unlock note:', note.id);
-      
-      Alert.alert(
-        'Unlock Note',
-        'Are you sure you want to unlock this note? It will be moved back to your regular notes and removed from the vault.',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Unlock',
-            style: 'default',
-            onPress: async () => {
-              try {
-                // Move note from vault back to regular notes
-                const result = await StorageHelper.moveNoteFromVault(note.id);
-                
-                if (result.success) {
-                  console.log('Vault: Note unlocked successfully:', result.note);
-                  setSuccessMessage('Note has been unlocked and moved back to your regular notes.');
-                  setShowSuccessPopup(true);
-                  
-                  // Refresh the vault notes list
-                  await loadVaultNotes();
-                } else {
-                  console.log('Vault: Note unlock failed');
-                  Alert.alert('Error', 'Failed to unlock note. Please try again.');
-                }
-              } catch (error) {
-                console.error('Vault: Error unlocking note:', error);
-                Alert.alert('Error', 'Failed to unlock note. Please try again.');
-              }
-            }
-          }
-        ]
-      );
-    } catch (error) {
-      console.error('Vault: Error in unlock dialog:', error);
-      Alert.alert('Error', 'Failed to unlock note. Please try again.');
-    }
-  };
-
-  const tabs = [
-    { id: 'notes', label: 'Notes', icon: FileText },
-    { id: 'videos', label: 'Videos', icon: Video },
-    { id: 'images', label: 'Images', icon: Image },
-  ];
-
-  // Handle add button press for each tab
-  const handleAddPress = async () => {
-    if (activeTab === 'notes') {
-      console.log('Vault: Showing import dialog for notes...');
-      // Show import dialog for notes
-      Alert.alert(
-        'Import Notes to Vault',
-        'Select notes from your regular notes to move them to the vault. The original notes will be removed from your regular notes and will only be accessible through the vault.',
-        [
-          {
-            text: 'Cancel',
-            style: 'cancel',
-            onPress: () => {
-              console.log('Vault: User cancelled the import operation');
-            }
-          },
-          {
-            text: 'Import Notes',
-            style: 'default',
-            onPress: async () => {
-              console.log('Vault: User confirmed import operation, navigating to note selection...');
-              try {
-                // Navigate to a note selection screen
-                router.push('/vault-note-import');
-              } catch (error) {
-                console.error('Vault: Error navigating to note import:', error);
-                Alert.alert('Error', 'Failed to open note import screen. Please try again.');
-              }
-            },
-          },
-        ]
-      );
-    } else if (activeTab === 'images') {
-      console.log('Vault: Showing confirmation dialog for moving images...');
-      // Show confirmation dialog for moving images
-      Alert.alert(
-        'Move Image to Vault',
-        'This will move the selected image from your device gallery to the vault. The original file will be removed from your gallery and will only be accessible through the vault.',
-        [
-          {
-            text: 'Cancel',
-            style: 'cancel',
-            onPress: () => {
-              console.log('Vault: User cancelled the move operation');
-            }
-          },
-          {
-            text: 'Move to Vault',
-            style: 'destructive',
-            onPress: async () => {
-              console.log('Vault: User confirmed move operation, starting image picker...');
-              try {
-                console.log('Vault: Adding image to vault...');
-                const result = await vaultFileSystem.pickAndStoreImage();
-                
-                if (result.success) {
-                  console.log('Vault: Image moved successfully:', result.message);
-                  Alert.alert('Success', result.message);
-                  
-                  // Refresh the vault files list
-                  await loadVaultFiles();
-                } else {
-                  console.log('Vault: Image picker cancelled or failed');
-                  // Don't show alert for cancellation
-                }
-              } catch (error) {
-                console.error('Vault: Error moving image:', error);
-                Alert.alert('Error', 'Failed to move image to vault. Please check permissions and try again.');
-              }
-            },
-          },
-        ]
-      );
-    } else if (activeTab === 'videos') {
-      console.log('Vault: Showing confirmation dialog for moving videos...');
-      // Show confirmation dialog for moving videos
-      Alert.alert(
-        'Move Video to Vault',
-        'This will move the selected video from your device gallery to the vault. The original file will be removed from your gallery and will only be accessible through the vault.',
-        [
-          {
-            text: 'Cancel',
-            style: 'cancel',
-            onPress: () => {
-              console.log('Vault: User cancelled the video move operation');
-            }
-          },
-          {
-            text: 'Move to Vault',
-            style: 'destructive',
-            onPress: async () => {
-              console.log('Vault: User confirmed video move operation, starting video picker...');
-              try {
-                console.log('Vault: Adding video to vault...');
-                const result = await vaultFileSystem.pickAndStoreVideo();
-                
-                if (result.success) {
-                  console.log('Vault: Video moved successfully:', result.message);
-                  Alert.alert('Success', result.message);
-                  
-                  // Refresh the vault files list
-                  await loadVaultFiles();
-                } else {
-                  console.log('Vault: Video picker cancelled or failed');
-                  // Don't show alert for cancellation
-                }
-              } catch (error) {
-                console.error('Vault: Error moving video:', error);
-                Alert.alert('Error', 'Failed to move video to vault. Please check permissions and try again.');
-              }
-            },
-          },
-        ]
-      );
-    } else {
-      // Handle other tabs (notes)
-      console.log('Vault: Add pressed for tab:', activeTab);
-    }
-  };
-
-  const handleImagePress = (index: number) => {
-    console.log('handleImagePress: Opening image at index:', index);
-    setPhotoViewerIndex(index);
-    setShowPhotoViewer(true);
-  };
-
-  const handleClosePhotoViewer = () => {
-    console.log('handleClosePhotoViewer: Closing photo viewer');
-    setShowPhotoViewer(false);
-  };
-
-  const handleImageDeleted = (deletedImagePath: string) => {
-    console.log('Vault: Image deleted, updating vault files list:', deletedImagePath);
-    // Remove the deleted image from the vaultFiles state
-    setVaultFiles(prevFiles => prevFiles.filter(file => file.path !== deletedImagePath));
-  };
-
-  const handleVideoPress = (index: number) => {
-    console.log('handleVideoPress: Opening video at index:', index);
-    setPhotoViewerIndex(index);
-    setShowVideoPlayer(true);
-  };
-
-  const handleCloseVideoPlayer = () => {
-    console.log('handleCloseVideoPlayer: Closing video player');
-    setShowVideoPlayer(false);
-  };
-
-  const handleVideoDeleted = (deletedVideoPath: string) => {
-    console.log('Vault: Video deleted, updating vault files list:', deletedVideoPath);
-    // Remove the deleted video from the vaultFiles state
-    setVaultFiles(prevFiles => prevFiles.filter(file => file.path !== deletedVideoPath));
-  };
-
-  const renderTabContent = () => {
-    switch (activeTab) {
-      case 'notes':
-        return <NotesTab theme={theme} onAddPress={handleAddPress} vaultNotes={vaultNotes} onNotePress={handleNotePress} onNoteUnlock={handleNoteUnlock} />;
-      case 'videos':
-        return <VideosTab theme={theme} onAddPress={handleAddPress} vaultFiles={vaultFiles} onVideoPress={handleVideoPress} />;
-      case 'images':
-        return <ImagesTab theme={theme} onAddPress={handleAddPress} vaultFiles={vaultFiles} onImagePress={handleImagePress} />;
-      default:
-        return <NotesTab theme={theme} onAddPress={handleAddPress} vaultNotes={vaultNotes} onNotePress={handleNotePress} onNoteUnlock={handleNoteUnlock} />;
-    }
-  };
-
-  // Show permission request if permissions not granted
-  if (showPermissionRequest) {
-    return (
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <TouchableOpacity style={styles.backButton} onPress={handleBack}>
-            <ArrowLeft size={28} color={theme === 'dark' ? '#fff' : '#222'} />
-          </TouchableOpacity>
-          <Text style={styles.title}>Vault</Text>
-        </View>
-        <PermissionRequest onRequestPermissions={handleRequestPermissions} />
-      </View>
-    );
+class VaultFileSystem {
+  constructor() {
+    this.vaultDir = `${FileSystem.documentDirectory}vault/`;
+    this.mediaDir = `${this.vaultDir}media/`;
+    this.imagesDir = `${this.mediaDir}images/`;
+    this.videosDir = `${this.mediaDir}videos/`;
+    this.initialized = false;
   }
 
-  return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={handleBack}>
-          <ArrowLeft size={28} color={theme === 'dark' ? '#fff' : '#222'} />
-        </TouchableOpacity>
-        <Text style={styles.title}>Vault</Text>
-      </View>
+  // Initialize vault directory structure
+  async initialize() {
+    try {
+      console.log('VaultFileSystem: Initializing vault directories...');
+      
+      // Create main vault directory
+      await this.ensureDirectoryExists(this.vaultDir);
+      
+      // Create media subdirectories
+      await this.ensureDirectoryExists(this.mediaDir);
+      await this.ensureDirectoryExists(this.imagesDir);
+      await this.ensureDirectoryExists(this.videosDir);
+      
+      this.initialized = true;
+      console.log('VaultFileSystem: Vault directories initialized successfully');
+      return true;
+    } catch (error) {
+      console.error('VaultFileSystem: Error initializing vault directories:', error);
+      throw error;
+    }
+  }
 
-      <View style={styles.tabsContainer}>
-        {tabs.map((tab) => {
-          const Icon = tab.icon;
-          const isActive = activeTab === tab.id;
-          
-          return (
-            <TouchableOpacity
-              key={tab.id}
-              style={[styles.tab, isActive && styles.activeTab]}
-              onPress={() => setActiveTab(tab.id)}
-              activeOpacity={0.7}
-            >
-              <Icon 
-                size={20} 
-                color={isActive ? PRIMARY_COLOR : (theme === 'dark' ? '#888' : '#666')} 
-              />
-              <Text 
-                style={[
-                  styles.tabText,
-                  isActive ? styles.activeTabText : styles.inactiveTabText
-                ]}
-              >
-                {tab.label}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
+  // Ensure directory exists, create if it doesn't
+  async ensureDirectoryExists(dirPath) {
+    try {
+      const dirInfo = await FileSystem.getInfoAsync(dirPath);
+      if (!dirInfo.exists) {
+        await FileSystem.makeDirectoryAsync(dirPath, { intermediates: true });
+        console.log(`VaultFileSystem: Created directory: ${dirPath}`);
+      }
+    } catch (error) {
+      console.error(`VaultFileSystem: Error ensuring directory exists: ${dirPath}`, error);
+      throw error;
+    }
+  }
 
-      <View style={styles.contentContainer} {...panResponder.panHandlers}>
-        {renderTabContent()}
-      </View>
+  // Request necessary permissions
+  async requestPermissions() {
+    try {
+      console.log('VaultFileSystem: Requesting permissions...');
+      
+      // On web, no permissions needed for file system operations
+      if (Platform.OS === 'web') {
+        console.log('VaultFileSystem: Web platform - no permissions required');
+        return {
+          mediaLibrary: true,
+          fileSystem: true
+        };
+      }
+      
+      // Request media library permissions with write access for deletion
+      const mediaPermission = await MediaLibrary.requestPermissionsAsync(true);
+      console.log('VaultFileSystem: Media library permission:', mediaPermission.status);
+      
+      // Verify we have full permissions including write access
+      if (mediaPermission.status === 'granted' && mediaPermission.canAskAgain !== false) {
+        console.log('VaultFileSystem: Media library permissions with write access granted');
+      } else {
+        console.warn('VaultFileSystem: Media library permissions not sufficient for deletion');
+        return {
+          mediaLibrary: false,
+          fileSystem: true,
+          error: 'Media library write permissions are required to move files to vault'
+        };
+      }
+      
+      return {
+        mediaLibrary: mediaPermission.status === 'granted',
+        fileSystem: true
+      };
+    } catch (error) {
+      console.error('VaultFileSystem: Error requesting permissions:', error);
+      return {
+        mediaLibrary: false,
+        fileSystem: true,
+        error: error.message
+      };
+    }
+  }
 
-      {/* Photo Viewer */}
-      <PhotoViewer
-        visible={showPhotoViewer}
-        onClose={handleClosePhotoViewer}
-        images={vaultFiles.filter(file => file.type === 'image')}
-        initialIndex={photoViewerIndex}
-        onImageDeleted={handleImageDeleted}
-      />
+  // Check if permissions are granted
+  async checkPermissions() {
+    try {
+      // On web, no permissions needed for file system operations
+      if (Platform.OS === 'web') {
+        console.log('VaultFileSystem: Web platform - permissions always granted');
+        return {
+          mediaLibrary: true,
+          fileSystem: true
+        };
+      }
+      
+      const mediaPermission = await MediaLibrary.getPermissionsAsync(true);
+      return {
+        mediaLibrary: mediaPermission.status === 'granted',
+        fileSystem: true,
+        canDelete: mediaPermission.status === 'granted' && mediaPermission.canAskAgain !== false
+      };
+    } catch (error) {
+      console.error('VaultFileSystem: Error checking permissions:', error);
+      return { 
+        mediaLibrary: false, 
+        fileSystem: true, 
+        canDelete: false,
+        error: error.message 
+      };
+    }
+  }
 
-      {/* Video Player */}
-      <VideoPlayer
-        visible={showVideoPlayer}
-        onClose={handleCloseVideoPlayer}
-        videos={vaultFiles.filter(file => file.type === 'video')}
-        initialIndex={photoViewerIndex}
-        onVideoDeleted={handleVideoDeleted}
-      />
+  // Enhanced method to get asset info from file URI
+  async getAssetInfoFromUri(fileUri) {
+    try {
+      if (Platform.OS === 'web') {
+        return null; // Web doesn't have asset IDs
+      }
+      
+      console.log(`VaultFileSystem: Getting asset info for URI: ${fileUri}`);
+      
+      // First try to get asset info directly from the URI
+      try {
+        const assetInfo = await MediaLibrary.getAssetInfoAsync(fileUri);
+        if (assetInfo && assetInfo.id) {
+          console.log(`VaultFileSystem: Found asset info directly: ${assetInfo.id}`);
+          return assetInfo;
+        }
+      } catch (directError) {
+        console.log(`VaultFileSystem: Direct asset info lookup failed: ${directError.message}`);
+      }
+      
+      // Fallback: Search through recent assets
+      console.log('VaultFileSystem: Searching through recent assets...');
+      const recentAssets = await MediaLibrary.getAssetsAsync({
+        first: 100,
+        mediaType: MediaLibrary.MediaType.all,
+        sortBy: MediaLibrary.SortBy.modificationTime
+      });
+      
+      // Try to find matching asset by URI or filename
+      const filename = fileUri.split('/').pop();
+      const matchingAsset = recentAssets.assets.find(asset => 
+        asset.uri === fileUri || 
+        (filename && asset.filename === filename)
+      );
+      
+      if (matchingAsset) {
+        console.log(`VaultFileSystem: Found matching asset in recent files: ${matchingAsset.id}`);
+        return matchingAsset;
+      }
+      
+      console.warn(`VaultFileSystem: No matching asset found for URI: ${fileUri}`);
+      return null;
+    } catch (error) {
+      console.error('VaultFileSystem: Error getting asset info from URI:', error);
+      return null;
+    }
+  }
 
-      {/* Success Popup */}
-      <SuccessPopup
-        visible={showSuccessPopup}
-        message={successMessage}
-        onClose={() => setShowSuccessPopup(false)}
-      />
-    </View>
-  );
+  // Enhanced deletion method with better error handling
+  async deleteOriginalFile(fileUri, assetInfo = null) {
+    try {
+      console.log(`VaultFileSystem: Attempting to delete original file: ${fileUri}`);
+      
+      if (Platform.OS === 'web') {
+        console.log('VaultFileSystem: Web platform - no original file to delete');
+        return { success: true, message: 'File copied to vault (web platform)' };
+      }
+      
+      // Check permissions before attempting deletion
+      const permissions = await this.checkPermissions();
+      if (!permissions.canDelete) {
+        console.warn('VaultFileSystem: Insufficient permissions for deletion');
+        return { 
+          success: false, 
+          message: 'File copied to vault but could not be removed from gallery due to insufficient permissions. Please delete manually.' 
+        };
+      }
+      
+      // Get asset info if not provided
+      if (!assetInfo) {
+        assetInfo = await this.getAssetInfoFromUri(fileUri);
+      }
+      
+      if (!assetInfo || !assetInfo.id) {
+        console.warn(`VaultFileSystem: Could not find asset info for deletion: ${fileUri}`);
+        return { 
+          success: false, 
+          message: 'File copied to vault but could not be removed from gallery. Asset not found. Please delete manually.' 
+        };
+      }
+      
+      // Attempt to delete the asset
+      console.log(`VaultFileSystem: Deleting asset from media library: ${assetInfo.id}`);
+      await MediaLibrary.deleteAssetsAsync([assetInfo.id]);
+      console.log(`VaultFileSystem: Successfully deleted asset from media library: ${assetInfo.id}`);
+      
+      return { success: true, message: 'File moved to vault and removed from gallery successfully' };
+      
+    } catch (error) {
+      console.error(`VaultFileSystem: Error deleting original file:`, error);
+      
+      // Provide specific error messages based on error type
+      if (error.message.includes('permission') || error.message.includes('denied')) {
+        return { 
+          success: false, 
+          message: 'File copied to vault but could not be removed from gallery due to permission restrictions. Please delete manually.' 
+        };
+      } else if (error.message.includes('not found')) {
+        return { 
+          success: false, 
+          message: 'File copied to vault but original file not found in gallery. It may have been moved already.' 
+        };
+      } else {
+        return { 
+          success: false, 
+          message: 'File copied to vault but could not be removed from gallery. Please delete manually.' 
+        };
+      }
+    }
+  }
+
+  // Store a file in the vault (copies the file and deletes original)
+  async storeFile(fileUri, type = 'image', assetId = null) {
+    try {
+      if (!this.initialized) {
+        await this.initialize();
+      }
+
+      console.log(`VaultFileSystem: Copying ${type} file to vault: ${fileUri}`);
+      
+      // Determine target directory based on type
+      const targetDir = type === 'video' ? this.videosDir : this.imagesDir;
+      
+      // Generate unique filename
+      const timestamp = Date.now();
+      const randomId = Math.random().toString(36).substring(2, 9);
+      const extension = fileUri.split('.').pop() || 'jpg';
+      const filename = `vault_${type}_${timestamp}_${randomId}.${extension}`;
+      const targetPath = `${targetDir}${filename}`;
+      
+      // Copy file to vault directory
+      await FileSystem.copyAsync({
+        from: fileUri,
+        to: targetPath
+      });
+      
+      console.log(`VaultFileSystem: File copied successfully to vault: ${targetPath}`);
+      
+      // Delete the original file from device media library
+      const deletionResult = await this.deleteOriginalFile(fileUri);
+      
+      return {
+        success: deletionResult.success,
+        filename: filename,
+        path: targetPath,
+        type: type,
+        timestamp: timestamp,
+        originalUri: fileUri,
+        assetId: assetId,
+        message: deletionResult.message,
+        deletionSuccess: deletionResult.success
+      };
+    } catch (error) {
+      console.error('VaultFileSystem: Error copying file to vault:', error);
+      throw error;
+    }
+  }
+
+  // Get list of files in vault
+  async getVaultFiles(type = null) {
+    try {
+      if (!this.initialized) {
+        await this.initialize();
+      }
+
+      console.log(`VaultFileSystem: Getting vault files, type: ${type}`);
+      
+      // Debug: Check if directories exist
+      const imagesDirInfo = await FileSystem.getInfoAsync(this.imagesDir);
+      const videosDirInfo = await FileSystem.getInfoAsync(this.videosDir);
+      console.log('VaultFileSystem: Images directory exists:', imagesDirInfo.exists);
+      console.log('VaultFileSystem: Videos directory exists:', videosDirInfo.exists);
+      
+      let targetDir;
+      if (type === 'video') {
+        targetDir = this.videosDir;
+        return await this.getFilesInDirectory(targetDir);
+      } else if (type === 'image') {
+        targetDir = this.imagesDir;
+        return await this.getFilesInDirectory(targetDir);
+      } else {
+        // Get all media files
+        console.log('VaultFileSystem: Getting all media files...');
+        const imageFiles = await this.getFilesInDirectory(this.imagesDir);
+        const videoFiles = await this.getFilesInDirectory(this.videosDir);
+        const allFiles = [...imageFiles, ...videoFiles];
+        console.log('VaultFileSystem: All files combined:', allFiles);
+        return allFiles;
+      }
+    } catch (error) {
+      console.error('VaultFileSystem: Error getting vault files:', error);
+      throw error;
+    }
+  }
+
+  // Get files in a specific directory
+  async getFilesInDirectory(dirPath) {
+    try {
+      const dirInfo = await FileSystem.getInfoAsync(dirPath);
+      if (!dirInfo.exists) {
+        return [];
+      }
+      
+      const files = await FileSystem.readDirectoryAsync(dirPath);
+      console.log(`VaultFileSystem: Found files in ${dirPath}:`, files);
+      console.log(`VaultFileSystem: Directory path: ${dirPath}`);
+      console.log(`VaultFileSystem: Number of files found: ${files.length}`);
+      const fileDetails = [];
+      
+      for (const filename of files) {
+        const filePath = `${dirPath}${filename}`;
+        const fileInfo = await FileSystem.getInfoAsync(filePath);
+        
+        console.log(`VaultFileSystem: Checking file: ${filename}, exists: ${fileInfo.exists}, isFile: ${fileInfo.isFile}, isDirectory: ${fileInfo.isDirectory}`);
+        if (fileInfo.exists && !fileInfo.isDirectory) {
+          const fileType = filename.includes('vault_video_') ? 'video' : 'image';
+          const fileDetail = {
+            filename: filename,
+            path: filePath,
+            size: fileInfo.size,
+            type: fileType,
+            timestamp: this.extractTimestampFromFilename(filename)
+          };
+          console.log(`VaultFileSystem: Processing file:`, fileDetail);
+          fileDetails.push(fileDetail);
+        } else {
+          console.log(`VaultFileSystem: Skipping file: ${filename} - exists: ${fileInfo.exists}, isDirectory: ${fileInfo.isDirectory}`);
+        }
+      }
+      
+      console.log(`VaultFileSystem: Processed ${fileDetails.length} files from ${dirPath}:`, fileDetails);
+      
+      // Debug: Test accessing the first file if any exist
+      if (fileDetails.length > 0) {
+        const testFile = fileDetails[0];
+        console.log(`VaultFileSystem: Testing access to first file: ${testFile.path}`);
+        try {
+          const testFileInfo = await FileSystem.getInfoAsync(testFile.path);
+          console.log(`VaultFileSystem: Test file info:`, testFileInfo);
+        } catch (e) {
+          console.error(`VaultFileSystem: Error accessing test file:`, e);
+        }
+      }
+      
+      return fileDetails.sort((a, b) => b.timestamp - a.timestamp); // Sort by newest first
+    } catch (error) {
+      console.error(`VaultFileSystem: Error reading directory: ${dirPath}`, error);
+      return [];
+    }
+  }
+
+  // Extract timestamp from filename
+  extractTimestampFromFilename(filename) {
+    const match = filename.match(/vault_\w+_(\d+)_/);
+    return match ? parseInt(match[1]) : 0;
+  }
+
+  // Delete a file from vault
+  async deleteFile(filePath) {
+    try {
+      console.log(`VaultFileSystem: Deleting file: ${filePath}`);
+      
+      const fileInfo = await FileSystem.getInfoAsync(filePath);
+      if (fileInfo.exists) {
+        await FileSystem.deleteAsync(filePath);
+        console.log(`VaultFileSystem: File deleted successfully: ${filePath}`);
+        return true;
+      } else {
+        console.log(`VaultFileSystem: File not found: ${filePath}`);
+        return false;
+      }
+    } catch (error) {
+      console.error('VaultFileSystem: Error deleting file:', error);
+      throw error;
+    }
+  }
+
+  // Get vault directory info
+  async getVaultInfo() {
+    try {
+      const vaultInfo = await FileSystem.getInfoAsync(this.vaultDir);
+      const mediaInfo = await FileSystem.getInfoAsync(this.mediaDir);
+      const imagesInfo = await FileSystem.getInfoAsync(this.imagesDir);
+      const videosInfo = await FileSystem.getInfoAsync(this.videosDir);
+      
+      return {
+        vaultExists: vaultInfo.exists,
+        mediaExists: mediaInfo.exists,
+        imagesExists: imagesInfo.exists,
+        videosExists: videosInfo.exists,
+        initialized: this.initialized
+      };
+    } catch (error) {
+      console.error('VaultFileSystem: Error getting vault info:', error);
+      return {
+        vaultExists: false,
+        mediaExists: false,
+        imagesExists: false,
+        videosExists: false,
+        initialized: false
+      };
+    }
+  }
+
+  // Pick image from gallery and store in vault
+  async pickAndStoreImage() {
+    try {
+      console.log('VaultFileSystem: Picking image from gallery...');
+
+      if (Platform.OS === 'web') {
+        return await this.pickImageWeb();
+      }
+
+      // Check permissions first before launching picker
+      const permissions = await this.checkPermissions();
+      if (!permissions.mediaLibrary) {
+        console.log('VaultFileSystem: Requesting media library permissions...');
+        const permissionResult = await this.requestPermissions();
+        
+        if (!permissionResult.mediaLibrary) {
+          return { 
+            success: false, 
+            message: permissionResult.error || 'Media library permissions are required to move files to vault' 
+          };
+        }
+      }
+
+      // Verify we can delete files
+      if (!permissions.canDelete) {
+        return { 
+          success: false, 
+          message: 'Write permissions are required to move files from gallery to vault' 
+        };
+      }
+
+      // Launch the picker
+      const result = await ImagePicker.launchImageLibraryAsync({
+        allowsEditing: false,
+        quality: 1,
+        allowsMultipleSelection: false,
+      });
+
+      if (result.canceled || !result.assets?.length) {
+        return { success: false, message: 'No image selected' };
+      }
+
+      const selectedImage = result.assets[0];
+      console.log('VaultFileSystem: Selected image:', selectedImage.uri);
+
+      // Copy the file into vault storage and delete from gallery
+      const storedResult = await this.storeFile(selectedImage.uri, 'image');
+
+      return {
+        success: storedResult.success,
+        originalUri: selectedImage.uri,
+        storedFile: storedResult,
+        message: storedResult.message,
+        deletionSuccess: storedResult.deletionSuccess
+      };
+    } catch (error) {
+      console.error('VaultFileSystem: Error picking and storing image:', error);
+      return { success: false, message: error.message };
+    }
+  }
+
+  // Web-specific image picker
+  async pickImageWeb() {
+    return new Promise((resolve) => {
+      // Create a file input element
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*';
+      input.style.display = 'none';
+      
+      input.onchange = async (event) => {
+        const file = event.target.files[0];
+        if (file) {
+          try {
+            // Convert file to data URL
+            const reader = new FileReader();
+            reader.onload = async (e) => {
+              const dataUrl = e.target.result;
+              console.log('VaultFileSystem: Web image selected:', file.name);
+              
+              // Move the image to vault
+              const storedResult = await this.storeFile(dataUrl, 'image');
+              console.log('VaultFileSystem: Web image moved successfully:', storedResult);
+              
+              resolve({
+                success: true,
+                originalUri: dataUrl,
+                storedFile: storedResult,
+                message: 'Image moved to vault successfully'
+              });
+            };
+            reader.readAsDataURL(file);
+          } catch (error) {
+            console.error('VaultFileSystem: Error processing web image:', error);
+            resolve({
+              success: false,
+              message: 'Failed to process image'
+            });
+          }
+        } else {
+          resolve({
+            success: false,
+            message: 'No image selected'
+          });
+        }
+        
+        // Clean up
+        document.body.removeChild(input);
+      };
+      
+      // Trigger file selection
+      document.body.appendChild(input);
+      input.click();
+    });
+  }
+
+  // Pick video from gallery and store in vault
+  async pickAndStoreVideo() {
+    try {
+      console.log('VaultFileSystem: Picking video from gallery...');
+
+      if (Platform.OS === 'web') {
+        return await this.pickVideoWeb();
+      }
+
+      // Check permissions first before launching picker
+      const permissions = await this.checkPermissions();
+      if (!permissions.mediaLibrary) {
+        console.log('VaultFileSystem: Requesting media library permissions...');
+        const permissionResult = await this.requestPermissions();
+        
+        if (!permissionResult.mediaLibrary) {
+          return { 
+            success: false, 
+            message: permissionResult.error || 'Media library permissions are required to move files to vault' 
+          };
+        }
+      }
+
+      // Verify we can delete files
+      if (!permissions.canDelete) {
+        return { 
+          success: false, 
+          message: 'Write permissions are required to move files from gallery to vault' 
+        };
+      }
+
+      // Launch the picker for videos
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+        allowsEditing: false,
+        quality: 1,
+        allowsMultipleSelection: false,
+      });
+
+      if (result.canceled || !result.assets?.length) {
+        return { success: false, message: 'No video selected' };
+      }
+
+      const selectedVideo = result.assets[0];
+      console.log('VaultFileSystem: Selected video:', selectedVideo.uri);
+
+      // Copy the file into vault storage and delete from gallery
+      const storedResult = await this.storeFile(selectedVideo.uri, 'video');
+
+      return {
+        success: storedResult.success,
+        originalUri: selectedVideo.uri,
+        storedFile: storedResult,
+        message: storedResult.message,
+        deletionSuccess: storedResult.deletionSuccess
+      };
+    } catch (error) {
+      console.error('VaultFileSystem: Error picking and storing video:', error);
+      return { success: false, message: error.message };
+    }
+  }
+
+  // Web-specific video picker
+  async pickVideoWeb() {
+    return new Promise((resolve) => {
+      // Create a file input element
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'video/*';
+      input.style.display = 'none';
+      
+      input.onchange = async (event) => {
+        const file = event.target.files[0];
+        if (file) {
+          try {
+            // Convert file to data URL
+            const reader = new FileReader();
+            reader.onload = async (e) => {
+              const dataUrl = e.target.result;
+              console.log('VaultFileSystem: Web video selected:', file.name);
+              
+              // Move the video to vault
+              const storedResult = await this.storeFile(dataUrl, 'video');
+              console.log('VaultFileSystem: Web video moved successfully:', storedResult);
+              
+              resolve({
+                success: true,
+                originalUri: dataUrl,
+                storedFile: storedResult,
+                message: 'Video moved to vault successfully'
+              });
+            };
+            reader.readAsDataURL(file);
+          } catch (error) {
+            console.error('VaultFileSystem: Error processing web video:', error);
+            resolve({
+              success: false,
+              message: 'Failed to process video'
+            });
+          }
+        } else {
+          resolve({
+            success: false,
+            message: 'No video selected'
+          });
+        }
+        
+        // Clean up
+        document.body.removeChild(input);
+      };
+      
+      // Trigger file selection
+      document.body.appendChild(input);
+      input.click();
+    });
+  }
+
+  // Restore a file from vault back to media library
+  async restoreFileFromVault(filePath, type = 'image') {
+    try {
+      if (!this.initialized) {
+        await this.initialize();
+      }
+
+      console.log(`VaultFileSystem: Restoring ${type} file from vault: ${filePath}`);
+      
+      // Check if file exists in vault
+      const fileInfo = await FileSystem.getInfoAsync(filePath);
+      if (!fileInfo.exists) {
+        throw new Error('File not found in vault');
+      }
+
+      // On web, we can't restore to media library, so we'll just delete from vault
+      if (Platform.OS === 'web') {
+        console.log('VaultFileSystem: Web platform - deleting file from vault only');
+        await FileSystem.deleteAsync(filePath);
+        return {
+          success: true,
+          message: 'File removed from vault (web platform)'
+        };
+      }
+
+      // For mobile platforms, save to media library
+      try {
+        console.log(`VaultFileSystem: Saving ${type} to media library...`);
+        
+        // Save file to media library
+        const asset = await MediaLibrary.saveToLibraryAsync(filePath);
+        console.log(`VaultFileSystem: File saved to media library with asset ID: ${asset}`);
+        
+        // Delete file from vault
+        await FileSystem.deleteAsync(filePath);
+        console.log(`VaultFileSystem: File deleted from vault: ${filePath}`);
+        
+        return {
+          success: true,
+          assetId: asset,
+          message: `${type} restored to gallery successfully`
+        };
+      } catch (saveError) {
+        console.error(`VaultFileSystem: Error saving ${type} to media library:`, saveError);
+        
+        // If saving to media library fails, just delete from vault
+        try {
+          await FileSystem.deleteAsync(filePath);
+          console.log(`VaultFileSystem: File deleted from vault after save failure: ${filePath}`);
+        } catch (deleteError) {
+          console.error(`VaultFileSystem: Error deleting file from vault:`, deleteError);
+        }
+        
+        return {
+          success: false,
+          message: `Failed to restore ${type} to gallery. File removed from vault.`
+        };
+      }
+    } catch (error) {
+      console.error(`VaultFileSystem: Error restoring ${type} from vault:`, error);
+      throw error;
+    }
+  }
 }
 
-// Explicit default export
-export default VaultScreen; 
+// Export singleton instance
+export const vaultFileSystem = new VaultFileSystem();
+export default vaultFileSystem;
