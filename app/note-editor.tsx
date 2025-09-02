@@ -9,7 +9,8 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
-  Modal
+  Modal,
+  BackHandler
 } from 'react-native';
 import { ArrowLeft, Check, MoveVertical as MoreVertical, FileText, SquareCheck as CheckSquare, Plus, Trash2, Tag, ChevronDown } from 'lucide-react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -198,14 +199,15 @@ function getStyles(theme: string, textSizePx: number) {
 
 export default function NoteEditor() {
   const router = useRouter();
-  let { noteId, categoryId: initialCategoryId, type: initialType } = useLocalSearchParams();
+  let { noteId, categoryId: initialCategoryId, type: initialType, fromVault } = useLocalSearchParams();
   // Ensure categoryId and type are always strings
   if (Array.isArray(initialCategoryId)) initialCategoryId = initialCategoryId[0];
   if (Array.isArray(initialType)) initialType = initialType[0];
+  if (Array.isArray(fromVault)) fromVault = fromVault[0];
   const [note, setNote] = useState<Note>({
     title: '',
     content: '',
-    categoryId: initialCategoryId || 'personal',
+    categoryId: initialCategoryId || 'personal', // Will be updated in loadData
     type: (initialType as 'text' | 'checklist') || 'text',
     items: []
   });
@@ -230,22 +232,45 @@ export default function NoteEditor() {
     }
   }, []);
 
+  // Handle back button press
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      handleBack();
+      return true; // Prevent default behavior
+    });
+
+    return () => backHandler.remove();
+  }, [hasUnsavedChanges, fromVault]);
+
   const loadData = async () => {
     try {
       const loadedCategories = await StorageHelper.getCategories();
       setCategories(loadedCategories as Category[]);
 
       if (noteId) {
+        // First try to find the note in regular notes
         const notes = await StorageHelper.getNotes();
-        const existingNote = (notes as Note[]).find((n: Note) => n.id === noteId && !n.deletedAt);
+        let existingNote = (notes as Note[]).find((n: Note) => n.id === noteId && !n.deletedAt);
+        
+        // If not found in regular notes, try vault notes
+        if (!existingNote) {
+          const vaultNotes = await StorageHelper.getVaultNotes();
+          existingNote = vaultNotes.find((n: any) => n.id === noteId);
+        }
+        
         if (existingNote) {
           setNote(existingNote);
         }
       } else {
-        // For new notes, set the initial category and type from params
+        // For new notes, get the default category if no category is specified
+        let defaultCategoryId = initialCategoryId;
+        if (!defaultCategoryId) {
+          defaultCategoryId = await StorageHelper.getDefaultCategory();
+        }
+        
         setNote(prev => ({
           ...prev,
-          categoryId: initialCategoryId || 'personal',
+          categoryId: defaultCategoryId,
           type: (initialType as 'text' | 'checklist') || 'text'
         }));
       }
@@ -282,12 +307,26 @@ export default function NoteEditor() {
 
     try {
       if (noteId) {
+        // Check if this is a vault note by looking in vault storage first
+        const vaultNotes = await StorageHelper.getVaultNotes();
+        const isVaultNote = vaultNotes.some((n: any) => n.id === noteId);
+        
+        if (isVaultNote) {
+          // Update vault note
+          await StorageHelper.updateVaultNote(noteId, finalNote);
+        } else {
+          // Update regular note
         await StorageHelper.updateNote(noteId, finalNote);
+        }
       } else {
         await StorageHelper.addNote(finalNote);
       }
       setHasUnsavedChanges(false);
-      router.back();
+      if (fromVault === 'true') {
+        router.push('/vault');
+      } else {
+        router.back();
+      }
     } catch (error) {
       Alert.alert('Error', 'Failed to save note');
     }
@@ -304,8 +343,22 @@ export default function NoteEditor() {
           style: 'destructive',
           onPress: async () => {
             try {
+              // Check if this is a vault note
+              const vaultNotes = await StorageHelper.getVaultNotes();
+              const isVaultNote = vaultNotes.some((n: any) => n.id === noteId);
+              
+              if (isVaultNote) {
+                // Delete from vault
+                await StorageHelper.deleteVaultNote(noteId);
+              } else {
+                // Delete regular note
               await StorageHelper.deleteNote(noteId);
-              router.back();
+              }
+              if (fromVault === 'true') {
+                router.push('/vault');
+              } else {
+                router.back();
+              }
             } catch (error) {
               Alert.alert('Error', 'Failed to delete note');
             }
@@ -359,14 +412,14 @@ export default function NoteEditor() {
 
   const handleAddChecklistItem = () => {
     setNote((prev: Note) => {
-      const newItem: ChecklistItem = {
-        id: Date.now().toString(),
-        text: '',
-        completed: false
-      };
+    const newItem: ChecklistItem = {
+      id: Date.now().toString(),
+      text: '',
+      completed: false
+    };
       const newItems = [...prev.items, newItem];
       return {
-        ...prev,
+      ...prev,
         items: newItems
       };
     });
@@ -389,13 +442,27 @@ export default function NoteEditor() {
         'Unsaved Changes',
         'Do you want to save your changes before leaving?',
         [
-          { text: 'Discard', style: 'destructive', onPress: () => router.back() },
+          { 
+            text: 'Discard', 
+            style: 'destructive', 
+            onPress: () => {
+              if (fromVault === 'true') {
+                router.push('/vault');
+              } else {
+                router.back();
+              }
+            }
+          },
           { text: 'Cancel', style: 'cancel' },
           { text: 'Save', onPress: handleSave }
         ]
       );
     } else {
-      router.back();
+      if (fromVault === 'true') {
+        router.push('/vault');
+      } else {
+        router.back();
+      }
     }
   };
 
@@ -493,17 +560,17 @@ export default function NoteEditor() {
                 // If this is the last item, pass a callback ref that focuses it
                 const isLast = filteredIdx === filteredArr.length - 1;
                 return (
-                  <ChecklistItem
-                    key={item.id}
+                <ChecklistItem
+                  key={item.id}
                     ref={isLast ? (el => { if (el) el.focus(); checklistRefs.current[fullIdx] = el; }) : (el => { checklistRefs.current[fullIdx] = el; })}
-                    item={item}
-                    onToggle={handleChecklistToggle}
-                    onUpdate={handleChecklistUpdate}
-                    onDelete={handleChecklistDelete}
-                    editable={true}
+                  item={item}
+                  onToggle={handleChecklistToggle}
+                  onUpdate={handleChecklistUpdate}
+                  onDelete={handleChecklistDelete}
+                  editable={true}
                     onSubmitEditing={handleChecklistItemSubmit}
                     textSize={textSizePx}
-                  />
+                />
                 );
               })}
               <TouchableOpacity

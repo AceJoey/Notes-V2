@@ -355,7 +355,7 @@ export default function CategoryEditor() {
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.headerButton}
-          onPress={() => router.back()}
+          onPress={() => router.push('/menu')}
           activeOpacity={0.7}
         >
           <ArrowLeft size={24} color={theme === 'dark' ? '#fff' : '#222'} />

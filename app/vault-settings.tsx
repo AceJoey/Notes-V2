@@ -4,7 +4,7 @@ import { ArrowLeft, Shield, Key, Trash2, Eye, EyeOff } from 'lucide-react-native
 import { useRouter } from 'expo-router';
 import { useTheme, PRIMARY_COLOR } from '../theme/ThemeContext';
 import { StorageHelper } from '../utils/storage';
-import VaultKeypad from '../components/VaultKeypad';
+
 
 function getStyles(theme: string) {
   return StyleSheet.create({
@@ -45,30 +45,34 @@ function getStyles(theme: string) {
     },
     settingItem: {
       flexDirection: 'row',
-      alignItems: 'center',
+      alignItems: 'flex-start',
       justifyContent: 'space-between',
       backgroundColor: theme === 'dark' ? '#2a2a2a' : '#f3f4f6',
       borderRadius: 12,
-      padding: 16,
+      padding: 20,
       marginBottom: 8,
+      minHeight: 80,
     },
     settingLeft: {
       flexDirection: 'row',
-      alignItems: 'center',
+      alignItems: 'flex-start',
       flex: 1,
     },
     settingIcon: {
       marginRight: 16,
+      marginTop: 2,
     },
     settingText: {
       fontSize: 16,
+      fontWeight: '600',
       color: theme === 'dark' ? '#fff' : '#222',
       flex: 1,
+      marginBottom: 4,
     },
     settingSubtext: {
       fontSize: 14,
       color: theme === 'dark' ? '#666' : '#888',
-      marginTop: 2,
+      lineHeight: 18,
     },
     dangerItem: {
       backgroundColor: theme === 'dark' ? '#2a1a1a' : '#fef2f2',
@@ -83,6 +87,8 @@ function getStyles(theme: string) {
       paddingVertical: 6,
       borderRadius: 16,
       backgroundColor: PRIMARY_COLOR,
+      alignSelf: 'flex-start',
+      marginTop: 2,
     },
     statusText: {
       color: '#fff',
@@ -100,8 +106,6 @@ export default function VaultSettingsScreen() {
   const { theme } = useTheme();
   const styles = getStyles(theme);
   const [hasPin, setHasPin] = useState(false);
-  const [showKeypad, setShowKeypad] = useState(false);
-  const [keypadMode, setKeypadMode] = useState<'setup' | 'change'>('setup');
 
   useEffect(() => {
     checkPinStatus();
@@ -112,70 +116,53 @@ export default function VaultSettingsScreen() {
     setHasPin(!!settings.vaultPin);
   };
 
+  const handleEnterVault = () => {
+    router.push('/vault-auth');
+  };
+
   const handleSetupPin = () => {
-    setKeypadMode('setup');
-    setShowKeypad(true);
+    router.push('/vault-auth');
   };
 
   const handleChangePin = () => {
-    setKeypadMode('change');
-    setShowKeypad(true);
+    router.push('/vault-auth?mode=change');
   };
 
-  const handleRemovePin = () => {
-    Alert.alert(
-      'Remove Vault PIN',
-      'Are you sure you want to remove your vault PIN? This will disable vault protection.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Remove',
-          style: 'destructive',
-          onPress: async () => {
-            const settings = await StorageHelper.getSettings();
-            await StorageHelper.saveSettings({ ...settings, vaultPin: null });
-            setHasPin(false);
-            Alert.alert('Success', 'Vault PIN has been removed');
-          }
-        }
-      ]
-    );
-  };
-
-  const handleClearVaultData = () => {
-    Alert.alert(
-      'Clear Vault Data',
-      'This will permanently delete all data stored in the vault. This action cannot be undone.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Clear All',
-          style: 'destructive',
-          onPress: async () => {
-            // TODO: Implement vault data clearing
-            Alert.alert('Success', 'Vault data has been cleared');
-          }
-        }
-      ]
-    );
-  };
-
-  const handleKeypadSuccess = () => {
-    setShowKeypad(false);
-    checkPinStatus();
-    Alert.alert('Success', hasPin ? 'PIN has been changed' : 'Vault PIN has been set up');
-  };
 
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+        <TouchableOpacity style={styles.backButton} onPress={() => router.push('/menu')}>
           <ArrowLeft size={24} color={theme === 'dark' ? '#fff' : '#222'} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Vault Settings</Text>
       </View>
 
       <View style={styles.content}>
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Vault Access</Text>
+          
+          <TouchableOpacity
+            style={styles.settingItem}
+            onPress={handleEnterVault}
+            activeOpacity={0.7}
+          >
+            <View style={styles.settingLeft}>
+              <View style={styles.settingIcon}>
+                <Shield size={24} color={PRIMARY_COLOR} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.settingText}>
+                  Enter Vault
+                </Text>
+                <Text style={styles.settingSubtext}>
+                  Access your secure vault content
+                </Text>
+              </View>
+            </View>
+          </TouchableOpacity>
+        </View>
+
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Security</Text>
           
@@ -203,60 +190,10 @@ export default function VaultSettingsScreen() {
               </Text>
             </View>
           </TouchableOpacity>
-
-          {hasPin && (
-            <TouchableOpacity
-              style={[styles.settingItem, styles.dangerItem]}
-              onPress={handleRemovePin}
-              activeOpacity={0.7}
-            >
-              <View style={styles.settingLeft}>
-                <View style={styles.settingIcon}>
-                  <Shield size={24} color="#ef4444" />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.settingText, styles.dangerText]}>
-                    Remove PIN
-                  </Text>
-                  <Text style={styles.settingSubtext}>
-                    Disable vault protection
-                  </Text>
-                </View>
-              </View>
-            </TouchableOpacity>
-          )}
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Data Management</Text>
-          
-          <TouchableOpacity
-            style={[styles.settingItem, styles.dangerItem]}
-            onPress={handleClearVaultData}
-            activeOpacity={0.7}
-          >
-            <View style={styles.settingLeft}>
-              <View style={styles.settingIcon}>
-                <Trash2 size={24} color="#ef4444" />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.settingText, styles.dangerText]}>
-                  Clear Vault Data
-                </Text>
-                <Text style={styles.settingSubtext}>
-                  Permanently delete all vault content
-                </Text>
-              </View>
-            </View>
-          </TouchableOpacity>
         </View>
       </View>
 
-      <VaultKeypad
-        visible={showKeypad}
-        onClose={() => setShowKeypad(false)}
-        onSuccess={handleKeypadSuccess}
-      />
+
     </View>
   );
 }

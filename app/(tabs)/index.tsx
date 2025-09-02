@@ -7,24 +7,26 @@ import {
   TouchableOpacity, 
   RefreshControl,
   Alert,
-  Modal
+  Modal,
+  PanResponder,
+  Dimensions,
+  BackHandler
 } from 'react-native';
-import { Search, SlidersHorizontal, MoveHorizontal as MoreHorizontal, Plus, CreditCard as Edit3, Trash2, Menu as MenuIcon, FileText, Calendar, List } from 'lucide-react-native';
+import { Search, SlidersHorizontal, MoveHorizontal as MoreHorizontal, Plus, CreditCard as Edit3, Trash2, Menu as MenuIcon, FileText, Calendar, List, Lock } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useNavigation } from '@react-navigation/native';
 import { StorageHelper } from '../../utils/storage';
 import { CategoryHelpers } from '../../utils/categoryHelpers';
 import NoteCard from '../../components/NoteCard';
 import CategoryTabs from '../../components/CategoryTabs';
-import VaultPromptModal from '../../components/VaultPromptModal';
 import SearchModal from '../../components/SearchModal';
 import SortModal from '../../components/SortModal';
-import VaultPullGesture from '../../components/VaultPullGesture';
-import VaultKeypad from '../../components/VaultKeypad';
-import VaultScreen from '../../components/VaultScreen';
 import { useTheme, PRIMARY_COLOR } from '../../theme/ThemeContext';
 import { useFocusEffect } from 'expo-router';
 import { Tabs } from 'expo-router';
+import { showAlert } from '../../components/CustomAlert';
+
+const { width: screenWidth } = Dimensions.get('window');
 
 interface Note {
   id: string;
@@ -184,28 +186,85 @@ export default function HomeScreen() {
   const [categories, setCategories] = useState<any[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [refreshing, setRefreshing] = useState<boolean>(false);
-  const [vaultModalVisible, setVaultModalVisible] = useState<boolean>(false);
   const [selectedNote, setSelectedNote] = useState<Note | null>(null);
   const [noteOptionsVisible, setNoteOptionsVisible] = useState<boolean>(false);
-  const [pullStartTime, setPullStartTime] = useState<number | null>(null);
   const [searchModalVisible, setSearchModalVisible] = useState<boolean>(false);
   const [sortModalVisible, setSortModalVisible] = useState<boolean>(false);
   const [currentSort, setCurrentSort] = useState<string>('created-desc');
-  const [pullDistance, setPullDistance] = useState(0);
-  const [showVaultPrompt, setShowVaultPrompt] = useState(false);
-  const vaultThreshold = 100;
   const flatListRef = useRef(null);
   const [headerHeight, setHeaderHeight] = useState(0);
   const headerRef = useRef(null);
   const [selectedNotes, setSelectedNotes] = useState<string[]>([]);
   const [selectionMode, setSelectionMode] = useState(false);
   const [moveModalVisible, setMoveModalVisible] = useState(false);
-  const [vaultKeypadVisible, setVaultKeypadVisible] = useState(false);
-  const [vaultScreenVisible, setVaultScreenVisible] = useState(false);
+
+  // PanResponder for swipe gestures
+  const panResponder = PanResponder.create({
+    onStartShouldSetPanResponder: (evt) => {
+      // Only handle single finger touches for horizontal swipe
+      return evt.nativeEvent.touches.length === 1;
+    },
+    onMoveShouldSetPanResponder: (evt, gestureState) => {
+      // Only handle horizontal swipes, not vertical scrolling
+      const { dx, dy } = gestureState;
+      return evt.nativeEvent.touches.length === 1 && Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 10;
+    },
+    onPanResponderGrant: () => {
+      console.log('HomeScreen: Swipe gesture started');
+    },
+    onPanResponderMove: (evt, gestureState) => {
+      if (evt.nativeEvent.touches.length === 1) {
+        console.log('HomeScreen: Swipe move, dx:', gestureState.dx);
+      }
+    },
+    onPanResponderRelease: (evt, gestureState) => {
+      if (evt.nativeEvent.touches.length === 0) {
+        console.log('HomeScreen: Swipe released, dx:', gestureState.dx);
+        const swipeThreshold = screenWidth * 0.2; // 20% of screen width
+        
+        if (gestureState.dx > swipeThreshold) {
+          // Swipe right - go to previous tab (Calendar)
+          console.log('HomeScreen: Swipe right detected, going to Calendar');
+          router.push('/(tabs)/calendar');
+        } else if (gestureState.dx < -swipeThreshold) {
+          // Swipe left - go to next tab (Checklists)
+          console.log('HomeScreen: Swipe left detected, going to Checklists');
+          router.push('/(tabs)/checklists');
+        } else {
+          console.log('HomeScreen: Swipe not strong enough');
+        }
+      }
+    },
+  });
 
   useFocusEffect(
-    React.useCallback(() => {
+    useCallback(() => {
       loadData();
+    }, [])
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+        Alert.alert(
+          'Exit App',
+          'Are you sure you want to exit Notes V?',
+          [
+            {
+              text: 'Cancel',
+              style: 'cancel',
+            },
+            {
+              text: 'Exit',
+              style: 'destructive',
+              onPress: () => BackHandler.exitApp(),
+            },
+          ]
+        );
+        return true; // Prevent default behavior
+      });
+
+      return () => backHandler.remove();
     }, [])
   );
 
@@ -224,11 +283,14 @@ export default function HomeScreen() {
 
   const loadData = async () => {
     try {
+      // Clean up any existing duplicate IDs first
+      await StorageHelper.cleanupDuplicateIds();
+      
       const [loadedNotes, loadedCategories] = await Promise.all([
         StorageHelper.getNotes(),
         StorageHelper.getCategories()
       ]);
-      setNotes(loadedNotes.filter(n => !n.deletedAt));
+      setNotes(loadedNotes.filter((n: any) => !n.deletedAt));
       setCategories(loadedCategories);
     } catch (error) {
       console.error('Error loading data:', error);
@@ -240,35 +302,7 @@ export default function HomeScreen() {
     loadData().finally(() => setRefreshing(false));
   }, []);
 
-  const handlePullStart = () => {
-    setPullStartTime(Date.now());
-  };
 
-  const handlePullEnd = () => {
-    if (pullStartTime) {
-      const pullDuration = Date.now() - pullStartTime;
-      if (pullDuration >= 2000) {
-        setVaultModalVisible(true);
-      }
-      setPullStartTime(null);
-    }
-  };
-
-  const handleScroll = (event) => {
-    const y = event.nativeEvent.contentOffset.y;
-    if (y < 0) {
-      setPullDistance(-y);
-    } else {
-      setPullDistance(0);
-    }
-  };
-
-  const handleScrollEndDrag = () => {
-    if (pullDistance > vaultThreshold) {
-      setShowVaultPrompt(true);
-    }
-    setPullDistance(0);
-  };
 
   const sortNotes = (notes: Note[], sortType: string): Note[] => {
     const sortedNotes = [...notes];
@@ -322,7 +356,7 @@ export default function HomeScreen() {
   };
 
   const handleBulkDelete = async () => {
-    Alert.alert(
+    await showAlert(
       'Delete Notes',
       `Are you sure you want to delete ${selectedNotes.length} notes?`,
       [
@@ -331,12 +365,19 @@ export default function HomeScreen() {
           text: 'Delete',
           style: 'destructive',
           onPress: async () => {
-            for (const id of selectedNotes) {
-              await StorageHelper.deleteNote(id);
+            try {
+              for (const id of selectedNotes) {
+                await StorageHelper.deleteNote(id);
+              }
+              setSelectionMode(false);
+              setSelectedNotes([]);
+              await loadData();
+            } catch (error) {
+              console.error('Error deleting notes:', error);
+              await showAlert('Error', 'Failed to delete notes. Please try again.', [
+                { text: 'OK', onPress: () => {} }
+              ]);
             }
-            setSelectionMode(false);
-            setSelectedNotes([]);
-            loadData();
           }
         }
       ]
@@ -357,9 +398,60 @@ export default function HomeScreen() {
     loadData();
   };
 
+  const handleBulkMoveToVault = async () => {
+    await showAlert(
+      'Move to Vault',
+      `Move ${selectedNotes.length} selected note${selectedNotes.length > 1 ? 's' : ''} to vault?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Move to Vault', 
+          style: 'default',
+          onPress: async () => {
+            try {
+              console.log('Moving notes to vault:', selectedNotes);
+              
+              // Show loading state
+              await showAlert('Moving to Vault', 'Please wait...', [
+                { text: 'OK', onPress: () => {} }
+              ]);
+              
+              // Move notes to vault
+              const result = await StorageHelper.moveNotesToVault(selectedNotes);
+              
+              if (result.success) {
+                // Refresh the notes list
+                await loadData();
+                
+                // Show success message
+                await showAlert(
+                  'Success', 
+                  `Successfully moved ${result.movedCount} note${result.movedCount > 1 ? 's' : ''} to vault!`,
+                  [{ text: 'OK', onPress: () => {} }]
+                );
+                
+                // Exit selection mode
+                handleExitSelection();
+              } else {
+                throw new Error('Failed to move notes to vault');
+              }
+            } catch (error) {
+              console.error('Error moving notes to vault:', error);
+              await showAlert(
+                'Error', 
+                'Failed to move notes to vault. Please try again.',
+                [{ text: 'OK', onPress: () => {} }]
+              );
+            }
+          }
+        }
+      ]
+    );
+  };
+
   const handleDeleteNote = async () => {
     if (selectedNote) {
-      Alert.alert(
+      await showAlert(
         'Delete Note',
         'Are you sure you want to delete this note?',
         [
@@ -368,10 +460,17 @@ export default function HomeScreen() {
             text: 'Delete',
             style: 'destructive',
             onPress: async () => {
+              try {
               await StorageHelper.deleteNote(selectedNote.id);
               setNoteOptionsVisible(false);
               setSelectedNote(null);
-              loadData();
+                await loadData();
+              } catch (error) {
+                console.error('Error deleting note:', error);
+                await showAlert('Error', 'Failed to delete note. Please try again.', [
+                  { text: 'OK', onPress: () => {} }
+                ]);
+              }
             }
           }
         ]
@@ -384,11 +483,17 @@ export default function HomeScreen() {
     handleNotePress(selectedNote!);
   };
 
-  const handleCreateNote = () => {
+  const handleCreateNote = async () => {
+    // If selected category is 'all', use the default category instead
+    let categoryToUse = selectedCategory;
+    if (selectedCategory === 'all') {
+      categoryToUse = await StorageHelper.getDefaultCategory();
+    }
+    
     router.push({
       pathname: '/note-editor',
       params: { 
-        categoryId: selectedCategory,
+        categoryId: categoryToUse,
         type: 'text'
       }
     });
@@ -414,15 +519,6 @@ export default function HomeScreen() {
     setSelectedCategory('all');
   };
 
-  const handleVaultTrigger = () => {
-    setVaultKeypadVisible(true);
-  };
-
-  const handleVaultSuccess = () => {
-    setVaultKeypadVisible(false);
-    setVaultScreenVisible(true);
-  };
-
   const renderNote = ({ item }: { item: Note }): React.ReactElement => (
     <NoteCard
       note={item}
@@ -443,7 +539,16 @@ export default function HomeScreen() {
         <TouchableOpacity style={[styles.headerButton, { position: 'absolute', left: 16, top: 60, zIndex: 10 }]} onPress={handleSearchPress}>
             <Search size={24} color={theme === 'dark' ? '#fff' : '#222'} />
           </TouchableOpacity>
-        <Text style={[styles.appTitle, { textAlign: 'center', flex: 1 }]}>Notes V</Text>
+        <TouchableOpacity 
+          style={{ flex: 1, alignItems: 'center' }} 
+          onPress={() => router.push('/vault-auth')}
+          activeOpacity={0.7}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Text style={[styles.appTitle, { textAlign: 'center' }]}>Notes </Text>
+            <Text style={[styles.appTitle, { textAlign: 'center', color: PRIMARY_COLOR }]}>V</Text>
+          </View>
+        </TouchableOpacity>
         <View style={[styles.headerActions, { position: 'absolute', right: 16, top: 60, flexDirection: 'row', zIndex: 10 }]}> 
           <TouchableOpacity style={styles.headerButton} onPress={handleSortPress}>
             <SlidersHorizontal size={24} color={theme === 'dark' ? '#fff' : '#222'} />
@@ -494,41 +599,29 @@ export default function HomeScreen() {
   );
 
   return (
-    <VaultPullGesture onVaultTrigger={handleVaultTrigger}>
-      <View style={styles.container}>
+    <View style={styles.container} {...panResponder.panHandlers}>
       {/* Fixed header overlay */}
       {renderHeader()}
       <FlatList
-         ref={flatListRef}
+          ref={flatListRef}
         data={filteredAndSortedNotes}
         renderItem={renderNote}
         keyExtractor={(item: Note) => item.id}
-         ListHeaderComponent={<View style={{ height: headerHeight + 20 }} />}
+          ListHeaderComponent={<View style={{ height: headerHeight + 20 }} />}
         ListEmptyComponent={renderEmptyState}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor={PRIMARY_COLOR}
-            colors={[PRIMARY_COLOR]}
+              tintColor={PRIMARY_COLOR}
+              colors={[PRIMARY_COLOR]}
             progressBackgroundColor="#2a2a2a"
-            onTouchStart={handlePullStart}
-            onTouchEnd={handlePullEnd}
           />
         }
         contentContainerStyle={filteredAndSortedNotes.length === 0 ? styles.emptyContainer : null}
-         onScroll={handleScroll}
-         onScrollEndDrag={handleScrollEndDrag}
-         scrollEventThrottle={16}
+          scrollEventThrottle={16}
       />
-      {/* Vault pull notification */}
-      {pullDistance > 0 && (
-        <View style={{ position: 'absolute', top: 156, left: 0, right: 0, alignItems: 'center', zIndex: 20 }}>
-          <Text style={{ color: PRIMARY_COLOR, fontWeight: 'bold', fontSize: 16 }}>
-            {pullDistance > vaultThreshold ? 'Release to open vault' : 'Pull down to open vault'}
-          </Text>
-        </View>
-      )}
+
 
       {!selectionMode && (
       <TouchableOpacity
@@ -540,10 +633,7 @@ export default function HomeScreen() {
       </TouchableOpacity>
       )}
 
-      <VaultPromptModal
-        visible={vaultModalVisible || showVaultPrompt}
-        onClose={() => { setVaultModalVisible(false); setShowVaultPrompt(false); }}
-      />
+
 
       <Modal
         visible={noteOptionsVisible}
@@ -603,6 +693,10 @@ export default function HomeScreen() {
             <FileText size={24} color={PRIMARY_COLOR} />
             <Text style={{ color: PRIMARY_COLOR, marginTop: 4 }}>Move</Text>
           </TouchableOpacity>
+          <TouchableOpacity onPress={handleBulkMoveToVault} style={{ alignItems: 'center' }}>
+            <Lock size={24} color={PRIMARY_COLOR} />
+            <Text style={{ color: PRIMARY_COLOR, marginTop: 4 }}>Vault</Text>
+          </TouchableOpacity>
           <TouchableOpacity onPress={handleExitSelection} style={{ alignItems: 'center' }}>
             <Text style={{ color: PRIMARY_COLOR, fontWeight: 'bold', fontSize: 16 }}>Exit</Text>
           </TouchableOpacity>
@@ -642,18 +736,6 @@ export default function HomeScreen() {
           </TouchableOpacity>
         </Modal>
       )}
-
-      <VaultKeypad
-        visible={vaultKeypadVisible}
-        onClose={() => setVaultKeypadVisible(false)}
-        onSuccess={handleVaultSuccess}
-      />
-
-      <VaultScreen
-        visible={vaultScreenVisible}
-        onClose={() => setVaultScreenVisible(false)}
-      />
     </View>
-    </VaultPullGesture>
   );
 }

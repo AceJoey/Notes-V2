@@ -12,7 +12,9 @@ import {
   Moon,
   Sun,
   ArrowLeft,
-  Type
+  Type,
+  MessageSquare,
+  Tag
 } from 'lucide-react-native';
 import { StorageHelper } from '../utils/storage';
 import { useTheme } from '../theme/ThemeContext';
@@ -203,10 +205,18 @@ export default function MenuScreen() {
 
   const handleAbout = () => {
     Alert.alert(
-      'About Notein',
-      'Notein v1.0.0 - Phase 1 MVP\n\nA secure note-taking app with hidden vault functionality.\n\nDeveloped with React Native and Expo.\n\nFeatures:\n• Note and checklist management\n• Category organization\n• Calendar view\n• Dark/light theme\n• Secure vault (coming soon)',
+      'About Notes V',
+      'Notes V v1.0.0\n\nA comprehensive note-taking app with advanced security features.\n\n📝 Core Features:\n• Text notes and checklists\n• Category organization\n• Calendar view with date tracking\n• Dark/light theme support\n• Font size customization\n• Search functionality\n• Sort and filter options\n• Bulk operations (select, move, delete)\n• Recycle bin with soft delete\n• Export/Import capabilities\n\n🔒 Security Features:\n• Secure vault with PIN protection\n• Private notes, images, and videos\n• Encrypted storage\n• Unlock functionality to restore files\n• Import notes to vault\n• Vault settings management\n\n🎬 Media Support:\n• Photo viewer with controls\n• Video player with aspect ratios\n• Swipe gestures for navigation\n• Full-screen media viewing\n• Unlock media from vault\n\n📱 User Experience:\n• Swipe gestures between tabs\n• Intuitive navigation\n• Responsive design\n• Cross-platform support\n• Offline functionality\n\nBuilt with modern technologies for a seamless experience.',
       [{ text: 'OK' }]
     );
+  };
+
+  const handleFeedback = () => {
+    router.push('/feedback');
+  };
+
+  const handleDefaultCategory = () => {
+    router.push('/default-category');
   };
 
   const handleRecycleBin = () => {
@@ -228,22 +238,16 @@ export default function MenuScreen() {
       onPress: () => router.push('/font-size'),
     },
     {
+      title: 'Default Category',
+      icon: Tag,
+      type: 'button',
+      onPress: handleDefaultCategory,
+    },
+    {
       title: 'Vault Settings',
       icon: Shield,
       type: 'button',
       onPress: handleVaultSettings,
-    },
-    {
-      title: 'Export Notes',
-      icon: Download,
-      type: 'button',
-      onPress: handleExportNotes,
-    },
-    {
-      title: 'Import Notes',
-      icon: Upload,
-      type: 'button',
-      onPress: handleImportNotes,
     },
     {
       title: 'Recycle Bin',
@@ -302,7 +306,7 @@ export default function MenuScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity style={{ position: 'absolute', left: 8, top: 60, zIndex: 10 }} onPress={() => router.back()}>
+        <TouchableOpacity style={{ position: 'absolute', left: 8, top: 60, zIndex: 10 }} onPress={() => router.push('/(tabs)')}>
           <ArrowLeft size={28} color={theme === 'dark' ? '#fff' : '#222'} />
         </TouchableOpacity>
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
@@ -316,10 +320,10 @@ export default function MenuScreen() {
           <Text style={styles.statNumber}>{notesCount}</Text>
           <Text style={styles.statLabel}>Total Notes</Text>
         </View>
-        <View style={styles.statCard}>
-          <Text style={styles.statNumber}>Phase 1</Text>
-          <Text style={styles.statLabel}>Version</Text>
-        </View>
+        <TouchableOpacity style={styles.statCard} onPress={handleFeedback} activeOpacity={0.7}>
+          <MessageSquare size={24} color={PRIMARY_COLOR} style={{ marginBottom: 8 }} />
+          <Text style={styles.statLabel}>Feedback</Text>
+        </TouchableOpacity>
       </View>
 
       <View style={styles.menuContainer}>

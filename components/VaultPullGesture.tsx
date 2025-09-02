@@ -1,128 +1,137 @@
 import React, { useRef } from 'react';
-import { View, Text, StyleSheet, Dimensions } from 'react-native';
-import { PanGestureHandler, State } from 'react-native-gesture-handler';
+import { View, Text, StyleSheet, FlatList, ScrollView } from 'react-native';
 import Animated, {
-  useAnimatedGestureHandler,
-  useAnimatedStyle,
   useSharedValue,
+  useAnimatedStyle,
   withSpring,
   runOnJS,
-  interpolate,
-  Extrapolate,
 } from 'react-native-reanimated';
-import { useTheme, PRIMARY_COLOR } from '../theme/ThemeContext';
+import { useTheme } from '../theme/ThemeContext';
+import { Lock } from 'lucide-react-native';
 
-const { height: SCREEN_HEIGHT } = Dimensions.get('window');
-const PULL_THRESHOLD = 120;
+const PULL_PROMPT_THRESHOLD = 120;
+const PULL_KEYPAD_THRESHOLD = 200;
+const VAULT_BLUE = '#3b82f6';
 
 interface VaultPullGestureProps {
   children: React.ReactNode;
-  onVaultTrigger: () => void;
+  onVaultPromptTrigger: () => void;
+  onVaultKeypadTrigger: () => void;
 }
 
 function getStyles(theme: string) {
   return StyleSheet.create({
-    container: {
-      flex: 1,
-    },
-    pullIndicator: {
+    indicatorContainer: {
       position: 'absolute',
       top: 0,
       left: 0,
       right: 0,
-      height: 100,
-      justifyContent: 'center',
       alignItems: 'center',
-      backgroundColor: theme === 'dark' ? '#1a1a1a' : '#fff',
-      zIndex: 10,
+      justifyContent: 'flex-end',
+      zIndex: 20,
+      overflow: 'visible',
+      pointerEvents: 'none',
     },
-    pullText: {
+    lockIcon: {
+      marginBottom: 8,
+    },
+    promptText: {
       fontSize: 16,
       fontWeight: '600',
-      color: PRIMARY_COLOR,
+      color: VAULT_BLUE,
       textAlign: 'center',
-    },
-    pullSubtext: {
-      fontSize: 14,
-      color: theme === 'dark' ? '#666' : '#888',
-      textAlign: 'center',
-      marginTop: 4,
+      marginBottom: 8,
     },
   });
 }
 
-export default function VaultPullGesture({ children, onVaultTrigger }: VaultPullGestureProps) {
+export default function VaultPullGesture({ children, onVaultPromptTrigger, onVaultKeypadTrigger }: VaultPullGestureProps) {
   const { theme } = useTheme();
   const styles = getStyles(theme);
-  const translateY = useSharedValue(0);
   const pullDistance = useSharedValue(0);
+  const isDragging = useRef(false);
+  const triggeredPrompt = useRef(false);
+  const triggeredKeypad = useRef(false);
 
-  const gestureHandler = useAnimatedGestureHandler({
-    onStart: () => {
-      // Reset values
-    },
-    onActive: (event) => {
-      if (event.translationY > 0) {
-        pullDistance.value = event.translationY;
-        translateY.value = Math.min(event.translationY * 0.5, PULL_THRESHOLD);
+  // Handler to track scroll position and pull gesture
+  const handleScroll = (event: any) => {
+    const y = event.nativeEvent.contentOffset.y;
+    if (y <= 0 && isDragging.current) {
+      const dy = -y;
+      pullDistance.value = dy;
+      if (dy > PULL_KEYPAD_THRESHOLD && !triggeredKeypad.current) {
+        triggeredKeypad.current = true;
+        runOnJS(onVaultKeypadTrigger)();
+      } else if (dy > PULL_PROMPT_THRESHOLD && !triggeredPrompt.current) {
+        triggeredPrompt.current = true;
+        runOnJS(onVaultPromptTrigger)();
       }
-    },
-    onEnd: (event) => {
-      if (pullDistance.value > PULL_THRESHOLD) {
-        runOnJS(onVaultTrigger)();
-      }
-      
-      translateY.value = withSpring(0);
-      pullDistance.value = withSpring(0);
-    },
-  });
-
-  const animatedStyle = useAnimatedStyle(() => {
-    return {
-      transform: [{ translateY: translateY.value }],
-    };
-  });
-
-  const indicatorStyle = useAnimatedStyle(() => {
-    const opacity = interpolate(
-      pullDistance.value,
-      [0, 50, PULL_THRESHOLD],
-      [0, 0.7, 1],
-      Extrapolate.CLAMP
-    );
-
-    const scale = interpolate(
-      pullDistance.value,
-      [0, PULL_THRESHOLD],
-      [0.8, 1.1],
-      Extrapolate.CLAMP
-    );
-
-    return {
-      opacity,
-      transform: [{ scale }],
-    };
-  });
-
-  const getPullText = () => {
-    return pullDistance.value > PULL_THRESHOLD ? 'Release to open vault' : 'Pull down to access vault';
+    } else if (y > 0) {
+      pullDistance.value = 0;
+      triggeredPrompt.current = false;
+      triggeredKeypad.current = false;
+    }
   };
 
+  const handleScrollBeginDrag = () => {
+    isDragging.current = true;
+    triggeredPrompt.current = false;
+    triggeredKeypad.current = false;
+  };
+
+  const handleScrollEndDrag = () => {
+    isDragging.current = false;
+    pullDistance.value = withSpring(0, { stiffness: 400, damping: 30 });
+    triggeredPrompt.current = false;
+    triggeredKeypad.current = false;
+  };
+
+  const animatedIndicatorStyle = useAnimatedStyle(() => ({
+    height: pullDistance.value > 0 ? pullDistance.value : 0,
+    opacity: pullDistance.value > 10 ? 1 : 0,
+  }));
+
+  const getPromptText = (dy: number) => {
+    if (dy > PULL_KEYPAD_THRESHOLD) return 'Release to open private folder';
+    if (dy > PULL_PROMPT_THRESHOLD) return 'Pull further to open private folder';
+    return 'Pull down to open private folder';
+  };
+
+  // Only inject scroll props if children is a FlatList or ScrollView
+  let content = children;
+  if (
+    React.isValidElement(children) &&
+    (children.type === FlatList || children.type === ScrollView)
+  ) {
+    const childElement = children as React.ReactElement<any>;
+    content = React.cloneElement(childElement, {
+      onScroll: (event: any) => {
+        handleScroll(event);
+        if (childElement.props && typeof childElement.props.onScroll === 'function') childElement.props.onScroll(event);
+      },
+      onScrollBeginDrag: (event: any) => {
+        handleScrollBeginDrag();
+        if (childElement.props && typeof childElement.props.onScrollBeginDrag === 'function') childElement.props.onScrollBeginDrag(event);
+      },
+      onScrollEndDrag: (event: any) => {
+        handleScrollEndDrag();
+        if (childElement.props && typeof childElement.props.onScrollEndDrag === 'function') childElement.props.onScrollEndDrag(event);
+      },
+      scrollEventThrottle: 16,
+    });
+  }
+
   return (
-    <View style={styles.container}>
-      <PanGestureHandler onGestureEvent={gestureHandler}>
-        <Animated.View style={[styles.container, animatedStyle]}>
-          <Animated.View style={[styles.pullIndicator, indicatorStyle]}>
-            <Text style={styles.pullText}>
-              {pullDistance.value > PULL_THRESHOLD ? 'Release to open vault' : 'Pull down to access vault'}
-            </Text>
-            <Text style={styles.pullSubtext}>
-              Secure vault access
-            </Text>
+    <View style={{ flex: 1 }}>
+      <Animated.View style={[styles.indicatorContainer, animatedIndicatorStyle]}>
+        {pullDistance.value > 10 && (
+          <>
+            <Lock size={48} color={VAULT_BLUE} style={styles.lockIcon} />
+            <Text style={styles.promptText}>{getPromptText(pullDistance.value)}</Text>
+          </>
+        )}
           </Animated.View>
-          {children}
-        </Animated.View>
-      </PanGestureHandler>
+      {content}
     </View>
   );
 }

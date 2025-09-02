@@ -192,7 +192,7 @@ export default function CategoryTabs({ categories, selectedCategory, onCategoryS
   };
 
   // Maximum aggression: almost fully solid, sharp drop to transparent
-  const fadeColors = theme === 'dark'
+  const fadeColors = theme === 'dark' 
     ? ['rgba(26, 26, 26, 1)', 'rgba(26, 26, 26, 1)', 'rgba(26, 26, 26, 0.7)', 'rgba(26, 26, 26, 0)']
     : ['rgba(243, 244, 246, 1)', 'rgba(243, 244, 246, 1)', 'rgba(243, 244, 246, 0.7)', 'rgba(243, 244, 246, 0)'];
 

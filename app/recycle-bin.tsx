@@ -61,7 +61,7 @@ export default function RecycleBinScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
+        <TouchableOpacity onPress={() => router.push('/menu')}>
           <ArrowLeft size={24} color={theme === 'dark' ? '#fff' : '#222'} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Recycle Bin</Text>

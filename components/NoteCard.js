@@ -45,11 +45,11 @@ export default function NoteCard({ note, categories, onPress, onLongPress, selec
             )}
           </View>
         </View>
-
+        
         <Text style={styles.preview} numberOfLines={2}>
           {getPreview()}
         </Text>
-
+        
         <View style={styles.footer}>
           <View style={styles.dateContainer}>
             <Calendar size={14} color="#666" />

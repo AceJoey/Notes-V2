@@ -26,14 +26,7 @@ export default function FontSizeScreen() {
   return (
     <View style={[styles.container, { backgroundColor: bgColor }]}> 
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={() => {
-          // Try to go back, if not possible, go to /menu
-          try {
-            router.back();
-          } catch (e) {
-            router.replace('/menu');
-          }
-        }}>
+        <TouchableOpacity style={styles.backButton} onPress={() => router.push('/menu')}>
           <ArrowLeft size={28} color={textColor} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: textColor }]}>Font size</Text>
