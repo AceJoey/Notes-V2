@@ -62,26 +62,33 @@ class VaultFileSystem {
         };
       }
       
-      // Request media library permissions (this covers file access and deletion)
-      const mediaPermission = await MediaLibrary.requestPermissionsAsync();
+      // Request media library permissions with write access for deletion
+      const mediaPermission = await MediaLibrary.requestPermissionsAsync(true);
       console.log('VaultFileSystem: Media library permission:', mediaPermission.status);
       
-      // Check if we have write permissions (needed for deletion)
-      if (mediaPermission.status === 'granted') {
-        console.log('VaultFileSystem: Media library write permissions granted');
+      // Verify we have full permissions including write access
+      if (mediaPermission.status === 'granted' && mediaPermission.canAskAgain !== false) {
+        console.log('VaultFileSystem: Media library permissions with write access granted');
       } else {
-        console.warn('VaultFileSystem: Media library permissions not granted - deletion may fail');
+        console.warn('VaultFileSystem: Media library permissions not sufficient for deletion');
+        return {
+          mediaLibrary: false,
+          fileSystem: true,
+          error: 'Media library write permissions are required to move files to vault'
+        };
       }
       
-      // For file system operations, we only need media library permissions
-      // FileSystem operations work within the app's document directory without additional permissions
       return {
         mediaLibrary: mediaPermission.status === 'granted',
-        fileSystem: true // FileSystem operations are always allowed in app's document directory
+        fileSystem: true
       };
     } catch (error) {
       console.error('VaultFileSystem: Error requesting permissions:', error);
-      throw error;
+      return {
+        mediaLibrary: false,
+        fileSystem: true,
+        error: error.message
+      };
     }
   }
 
@@ -97,158 +104,131 @@ class VaultFileSystem {
         };
       }
       
-      const mediaPermission = await MediaLibrary.getPermissionsAsync();
+      const mediaPermission = await MediaLibrary.getPermissionsAsync(true);
       return {
         mediaLibrary: mediaPermission.status === 'granted',
-        fileSystem: true // FileSystem operations are always allowed in app's document directory
+        fileSystem: true,
+        canDelete: mediaPermission.status === 'granted' && mediaPermission.canAskAgain !== false
       };
     } catch (error) {
       console.error('VaultFileSystem: Error checking permissions:', error);
-      return { mediaLibrary: false, fileSystem: true };
+      return { 
+        mediaLibrary: false, 
+        fileSystem: true, 
+        canDelete: false,
+        error: error.message 
+      };
     }
   }
 
-  // Get asset ID from file URI (fallback method)
-  async getAssetIdFromUri(fileUri) {
+  // Enhanced method to get asset info from file URI
+  async getAssetInfoFromUri(fileUri) {
     try {
       if (Platform.OS === 'web') {
         return null; // Web doesn't have asset IDs
       }
       
-      // Try to find the asset by matching the URI
-      const assets = await MediaLibrary.getAssetsAsync({
-        first: 1000, // Get a reasonable number of assets
-        mediaType: MediaLibrary.MediaType.photo,
-        sortBy: MediaLibrary.SortBy.creationTime
+      console.log(`VaultFileSystem: Getting asset info for URI: ${fileUri}`);
+      
+      // First try to get asset info directly from the URI
+      try {
+        const assetInfo = await MediaLibrary.getAssetInfoAsync(fileUri);
+        if (assetInfo && assetInfo.id) {
+          console.log(`VaultFileSystem: Found asset info directly: ${assetInfo.id}`);
+          return assetInfo;
+        }
+      } catch (directError) {
+        console.log(`VaultFileSystem: Direct asset info lookup failed: ${directError.message}`);
+      }
+      
+      // Fallback: Search through recent assets
+      console.log('VaultFileSystem: Searching through recent assets...');
+      const recentAssets = await MediaLibrary.getAssetsAsync({
+        first: 100,
+        mediaType: MediaLibrary.MediaType.all,
+        sortBy: MediaLibrary.SortBy.modificationTime
       });
       
-      // Find the asset with matching URI
-      const matchingAsset = assets.assets.find(asset => asset.uri === fileUri);
+      // Try to find matching asset by URI or filename
+      const filename = fileUri.split('/').pop();
+      const matchingAsset = recentAssets.assets.find(asset => 
+        asset.uri === fileUri || 
+        (filename && asset.filename === filename)
+      );
+      
       if (matchingAsset) {
-        console.log(`VaultFileSystem: Found matching asset ID: ${matchingAsset.id}`);
-        return matchingAsset.id;
+        console.log(`VaultFileSystem: Found matching asset in recent files: ${matchingAsset.id}`);
+        return matchingAsset;
       }
       
       console.warn(`VaultFileSystem: No matching asset found for URI: ${fileUri}`);
       return null;
     } catch (error) {
-      console.error('VaultFileSystem: Error getting asset ID from URI:', error);
+      console.error('VaultFileSystem: Error getting asset info from URI:', error);
       return null;
     }
   }
 
-  // Try to delete file from multiple possible locations
-  async deleteFileFromDevice(fileUri) {
+  // Enhanced deletion method with better error handling
+  async deleteOriginalFile(fileUri, assetInfo = null) {
     try {
-      console.log(`VaultFileSystem: Attempting comprehensive file deletion for: ${fileUri}`);
+      console.log(`VaultFileSystem: Attempting to delete original file: ${fileUri}`);
       
-      // Method 1: Try to delete the original URI directly
-      try {
-        await FileSystem.deleteAsync(fileUri, { idempotent: true });
-        console.log(`VaultFileSystem: Successfully deleted file at original URI: ${fileUri}`);
-        return true;
-      } catch (error) {
-        console.log(`VaultFileSystem: Failed to delete at original URI: ${fileUri}`, error.message);
+      if (Platform.OS === 'web') {
+        console.log('VaultFileSystem: Web platform - no original file to delete');
+        return { success: true, message: 'File copied to vault (web platform)' };
       }
       
-      // Method 2: Try to find and delete from common media directories
-      if (Platform.OS === 'android') {
-        const possiblePaths = [
-          '/storage/emulated/0/DCIM/Camera/',
-          '/storage/emulated/0/Pictures/',
-          '/storage/emulated/0/Download/',
-          '/storage/emulated/0/Images/'
-        ];
-        
-        // Extract filename from URI
-        const filename = fileUri.split('/').pop();
-        if (filename) {
-          for (const basePath of possiblePaths) {
-            const fullPath = basePath + filename;
-            try {
-              const fileInfo = await FileSystem.getInfoAsync(fullPath);
-              if (fileInfo.exists) {
-                await FileSystem.deleteAsync(fullPath, { idempotent: true });
-                console.log(`VaultFileSystem: Successfully deleted file from: ${fullPath}`);
-                return true;
-              }
-            } catch (error) {
-              // Continue to next path
-            }
-          }
-        }
+      // Check permissions before attempting deletion
+      const permissions = await this.checkPermissions();
+      if (!permissions.canDelete) {
+        console.warn('VaultFileSystem: Insufficient permissions for deletion');
+        return { 
+          success: false, 
+          message: 'File copied to vault but could not be removed from gallery due to insufficient permissions. Please delete manually.' 
+        };
       }
       
-      // Method 3: Try to delete from iOS Photos directory (if on iOS)
-      if (Platform.OS === 'ios') {
-        // iOS typically doesn't allow direct file system access to Photos
-        // But we can try some common paths
-        const possiblePaths = [
-          '/var/mobile/Media/DCIM/',
-          '/var/mobile/Media/Photos/'
-        ];
-        
-        const filename = fileUri.split('/').pop();
-        if (filename) {
-          for (const basePath of possiblePaths) {
-            const fullPath = basePath + filename;
-            try {
-              const fileInfo = await FileSystem.getInfoAsync(fullPath);
-              if (fileInfo.exists) {
-                await FileSystem.deleteAsync(fullPath, { idempotent: true });
-                console.log(`VaultFileSystem: Successfully deleted file from: ${fullPath}`);
-                return true;
-              }
-            } catch (error) {
-              // Continue to next path
-            }
-          }
-        }
+      // Get asset info if not provided
+      if (!assetInfo) {
+        assetInfo = await this.getAssetInfoFromUri(fileUri);
       }
       
-      console.warn(`VaultFileSystem: Could not delete file from any location: ${fileUri}`);
+      if (!assetInfo || !assetInfo.id) {
+        console.warn(`VaultFileSystem: Could not find asset info for deletion: ${fileUri}`);
+        return { 
+          success: false, 
+          message: 'File copied to vault but could not be removed from gallery. Asset not found. Please delete manually.' 
+        };
+      }
       
-      // Final fallback: Try shell commands
-      console.log(`VaultFileSystem: Attempting shell command deletion as final fallback...`);
-      await this.deleteFileWithShell(fileUri);
+      // Attempt to delete the asset
+      console.log(`VaultFileSystem: Deleting asset from media library: ${assetInfo.id}`);
+      await MediaLibrary.deleteAssetsAsync([assetInfo.id]);
+      console.log(`VaultFileSystem: Successfully deleted asset from media library: ${assetInfo.id}`);
       
-      return false;
+      return { success: true, message: 'File moved to vault and removed from gallery successfully' };
+      
     } catch (error) {
-      console.error(`VaultFileSystem: Error in comprehensive file deletion:`, error);
-      return false;
-    }
-  }
-
-  // Final fallback: Try shell command deletion (may not work in Expo Go)
-  async deleteFileWithShell(fileUri) {
-    try {
-      if (Platform.OS === 'android') {
-        // Try using Android's rm command
-        const filename = fileUri.split('/').pop();
-        const shellCommands = [
-          `rm -f "${fileUri}"`,
-          `rm -f "/storage/emulated/0/DCIM/Camera/${filename}"`,
-          `rm -f "/storage/emulated/0/Pictures/${filename}"`,
-          `rm -f "/storage/emulated/0/Download/${filename}"`
-        ];
-        
-        for (const command of shellCommands) {
-          try {
-            // Note: This may not work in Expo Go due to security restrictions
-            console.log(`VaultFileSystem: Attempting shell command: ${command}`);
-            // In a real implementation, you might use a native module here
-            // For now, we'll just log the attempt
-            console.log(`VaultFileSystem: Shell command attempted (may not work in Expo Go): ${command}`);
-          } catch (error) {
-            console.log(`VaultFileSystem: Shell command failed: ${command}`, error.message);
-          }
-        }
-      }
+      console.error(`VaultFileSystem: Error deleting original file:`, error);
       
-      return false; // Shell commands likely won't work in Expo Go
-    } catch (error) {
-      console.error(`VaultFileSystem: Error in shell deletion:`, error);
-      return false;
+      // Provide specific error messages based on error type
+      if (error.message.includes('permission') || error.message.includes('denied')) {
+        return { 
+          success: false, 
+          message: 'File copied to vault but could not be removed from gallery due to permission restrictions. Please delete manually.' 
+        };
+      } else if (error.message.includes('not found')) {
+        return { 
+          success: false, 
+          message: 'File copied to vault but original file not found in gallery. It may have been moved already.' 
+        };
+      } else {
+        return { 
+          success: false, 
+          message: 'File copied to vault but could not be removed from gallery. Please delete manually.' 
+        };
+      }
     }
   }
 
@@ -277,46 +257,21 @@ class VaultFileSystem {
         to: targetPath
       });
       
-      // Delete the original file from device media library
-      if (Platform.OS !== 'web') {
-        try {
-          // Step 1: Get the asset info from the file URI to ensure we have the correct asset ID
-          const assetInfo = await MediaLibrary.getAssetInfoAsync(fileUri);
-          
-          if (!assetInfo || !assetInfo.id) {
-            console.warn(`VaultFileSystem: No asset found for fileUri: ${fileUri}`);
-          } else {
-            console.log(`VaultFileSystem: Found asset ID: ${assetInfo.id} for file: ${fileUri}`);
-            
-            // Step 2: Check permissions before attempting deletion
-            const permissionResult = await MediaLibrary.requestPermissionsAsync();
-            if (permissionResult.status !== 'granted') {
-              console.warn(`VaultFileSystem: Media library permission not granted: ${permissionResult.status}`);
-            } else {
-              // Step 3: Delete the asset using the resolved asset ID
-              console.log(`VaultFileSystem: Deleting asset from media library: ${assetInfo.id}`);
-              await MediaLibrary.deleteAssetsAsync([assetInfo.id]);
-              console.log(`VaultFileSystem: Successfully deleted asset from media library: ${assetInfo.id}`);
-            }
-          }
-        } catch (deleteError) {
-          console.error(`VaultFileSystem: Failed to delete asset from media library for: ${fileUri}`, deleteError);
-          // Don't throw error, just log it - file is still copied to vault
-        }
-      } else {
-        console.log('VaultFileSystem: Web platform - skipping media library deletion');
-      }
-      
       console.log(`VaultFileSystem: File copied successfully to vault: ${targetPath}`);
       
+      // Delete the original file from device media library
+      const deletionResult = await this.deleteOriginalFile(fileUri);
+      
       return {
-        success: true,
+        success: deletionResult.success,
         filename: filename,
         path: targetPath,
         type: type,
         timestamp: timestamp,
         originalUri: fileUri,
-        assetId: assetId
+        assetId: assetId,
+        message: deletionResult.message,
+        deletionSuccess: deletionResult.success
       };
     } catch (error) {
       console.error('VaultFileSystem: Error copying file to vault:', error);
@@ -479,11 +434,26 @@ class VaultFileSystem {
         return await this.pickImageWeb();
       }
 
-      // Ask for media library access (simplified permission request)
-      const permissionResult = await MediaLibrary.requestPermissionsAsync();
+      // Check permissions first before launching picker
+      const permissions = await this.checkPermissions();
+      if (!permissions.mediaLibrary) {
+        console.log('VaultFileSystem: Requesting media library permissions...');
+        const permissionResult = await this.requestPermissions();
+        
+        if (!permissionResult.mediaLibrary) {
+          return { 
+            success: false, 
+            message: permissionResult.error || 'Media library permissions are required to move files to vault' 
+          };
+        }
+      }
 
-      if (!permissionResult.granted) {
-        throw new Error('Media library permission not granted');
+      // Verify we can delete files
+      if (!permissions.canDelete) {
+        return { 
+          success: false, 
+          message: 'Write permissions are required to move files from gallery to vault' 
+        };
       }
 
       // Launch the picker
@@ -504,10 +474,11 @@ class VaultFileSystem {
       const storedResult = await this.storeFile(selectedImage.uri, 'image');
 
       return {
-        success: true,
+        success: storedResult.success,
         originalUri: selectedImage.uri,
         storedFile: storedResult,
-        message: 'Image moved to vault successfully'
+        message: storedResult.message,
+        deletionSuccess: storedResult.deletionSuccess
       };
     } catch (error) {
       console.error('VaultFileSystem: Error picking and storing image:', error);
@@ -579,11 +550,26 @@ class VaultFileSystem {
         return await this.pickVideoWeb();
       }
 
-      // Ask for media library access (simplified permission request)
-      const permissionResult = await MediaLibrary.requestPermissionsAsync();
+      // Check permissions first before launching picker
+      const permissions = await this.checkPermissions();
+      if (!permissions.mediaLibrary) {
+        console.log('VaultFileSystem: Requesting media library permissions...');
+        const permissionResult = await this.requestPermissions();
+        
+        if (!permissionResult.mediaLibrary) {
+          return { 
+            success: false, 
+            message: permissionResult.error || 'Media library permissions are required to move files to vault' 
+          };
+        }
+      }
 
-      if (!permissionResult.granted) {
-        throw new Error('Media library permission not granted');
+      // Verify we can delete files
+      if (!permissions.canDelete) {
+        return { 
+          success: false, 
+          message: 'Write permissions are required to move files from gallery to vault' 
+        };
       }
 
       // Launch the picker for videos
@@ -605,10 +591,11 @@ class VaultFileSystem {
       const storedResult = await this.storeFile(selectedVideo.uri, 'video');
 
       return {
-        success: true,
+        success: storedResult.success,
         originalUri: selectedVideo.uri,
         storedFile: storedResult,
-        message: 'Video moved to vault successfully'
+        message: storedResult.message,
+        deletionSuccess: storedResult.deletionSuccess
       };
     } catch (error) {
       console.error('VaultFileSystem: Error picking and storing video:', error);
